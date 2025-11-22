@@ -1,24 +1,9 @@
 # src/agents/experience_curator.py
 from crewai import Agent
-from tools.activity_tools import (
-    find_activities,
-    find_restaurants,
-    find_local_tours
-)
+
+# Note: We removed the tools import because we don't want it searching anymore.
 
 def create_experience_curator_agent(llm, trip_duration_days: int, interests: list[str]):
-    """
-    Creates the Experience Curator agent with a dynamic goal.
-
-    Args:
-        llm: The language model instance.
-        trip_duration_days: The total number of days for the trip.
-        interests: A list of the user's interests.
-
-    Returns:
-        A crewai Agent object.
-    """
-    # Create a descriptive string from the list of interests
     interests_str = ", ".join(interests)
 
     return Agent(
@@ -28,12 +13,12 @@ def create_experience_curator_agent(llm, trip_duration_days: int, interests: lis
         tailored to a user with interests in {interests_str}.
         """,
         backstory=(
-            "You are a seasoned travel curator with a passion for creating unforgettable "
-            "experiences. You have a knack for finding hidden gems and crafting "
-            "narratives that turn a simple vacation into a lifelong memory. Your itineraries "
-            "are not just lists of places, but stories waiting to be lived."
+            "You are a seasoned travel curator. You take raw research and logistics data "
+            "and weave them into a perfect, day-by-day travel plan. "
+            "You don't need to search the web; you simply organize the provided information "
+            "into a beautiful itinerary."
         ),
-        tools=[find_activities, find_restaurants, find_local_tours],
+        tools=[], # <--- CRITICAL: No tools. Just pure LLM reasoning.
         verbose=True,
         allow_delegation=False,
         llm=llm

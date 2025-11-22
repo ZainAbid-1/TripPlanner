@@ -1,94 +1,116 @@
-# src/schemas/itinerary_schemas.py
-from pydantic import BaseModel, Field
-from typing import List, Optional, Literal
+from pydantic import BaseModel, Field, field_validator
+from typing import List, Optional, Literal, Any
 
 # ==============================================================================
-# Stage 1: Initial Query Deconstruction (Output of Lead Planner's First Task)
+# Stage 1: Initial Query Deconstruction
 # ==============================================================================
 
 class DeconstructedQuery(BaseModel):
-    """
-    The structured output after the Lead Planner deconstructs the initial user query.
-    This becomes the foundational context for all other agents.
-    """
-    destination: str = Field(..., description="The primary travel destination.")
-    start_date: str = Field(..., description="The start date of the trip in YYYY-MM-DD format.")
-    end_date: str = Field(..., description="The end date of the trip in YYYY-MM-DD format.")
-    travelers: str = Field(..., description="A description of the travelers (e.g., '2 adults', 'family of 4').")
-    budget_usd: int = Field(..., description="The total budget for the trip in USD.")
-    interests: List[str] = Field(..., description="A list of interests for the trip (e.g., 'romantic', 'adventure', 'culture').")
-    origin: Optional[str] = Field(None, description="The origin city or airport, if mentioned.")
+    # We use Optional[str] so the AI can set them to None if the user didn't mention them.
+    destination: Optional[str] = Field(None, description="The primary destination. Set to null if not specified.")
+    origin: Optional[str] = Field(None, description="The origin city. Set to null if not specified.")
+    
+    start_date: Optional[str] = Field(None, description="The start date (YYYY-MM-DD). Set to null if not specified.")
+    end_date: Optional[str] = Field(None, description="The end date (YYYY-MM-DD). Set to null if not specified.")
+    
+    travelers: Optional[str] = Field(None, description="Number of travelers. Set to null if not specified.")
+    budget_usd: Optional[int] = Field(None, description="Total budget in USD. Set to 0 or null if not specified.")
+    
+    interests: List[str] = Field(default_factory=list, description="Specific user interests.")
 
 # ==============================================================================
-# Stage 2: Parallel Research Outputs (Destination & Logistics Reports)
+# Stage 2: Research & Logistics
 # ==============================================================================
-
-class DestinationAnalysis(BaseModel):
-    """
-    The detailed research report from the Destination Analyst agent.
-    """
-    summary: str = Field(..., description="A compelling summary of the destination for the given dates and interests.")
-    weather_forecast: str = Field(..., description="Expected weather conditions and packing recommendations.")
-    key_regions: List[str] = Field(..., description="List of top 3-5 neighborhoods or regions to visit.")
-    attractions: List[str] = Field(..., description="List of 5-7 must-see attractions relevant to the interests.")
-    cultural_and_safety_tips: str = Field(..., description="Important cultural norms and safety advisories.")
 
 class FlightOption(BaseModel):
-    """Represents a single flight option."""
-    airline: str
-    price_usd: int
-    duration_hours: float
-    stops: int
+    airline: str = Field(default="Unknown Airline")
+    price_usd: int = Field(default=0)
+    duration_hours: float = Field(default=0.0)
+    stops: int = Field(default=0)
     booking_url: Optional[str] = None
+
+    # Safety validators to prevent crashes if AI creates invalid types
+    @field_validator('price_usd', 'stops', mode='before')
+    @classmethod
+    def parse_int_safely(cls, v):
+        if v is None or v == "": return 0
+        try: return int(v)
+        except: return 0
+
+    @field_validator('duration_hours', mode='before')
+    @classmethod
+    def parse_float_safely(cls, v):
+        if v is None or v == "": return 0.0
+        try: return float(v)
+        except: return 0.0
 
 class HotelOption(BaseModel):
-    """Represents a single hotel option."""
-    name: str
-    price_per_night_usd: int
-    rating: float
-    summary: str
+    name: str = Field(default="Unknown Hotel")
+    price_per_night_usd: int = Field(default=0)
+    rating: float = Field(default=0.0)
+    summary: str = Field(default="Details not available")
     booking_url: Optional[str] = None
 
+    @field_validator('price_per_night_usd', mode='before')
+    @classmethod
+    def parse_int_safely(cls, v):
+        if v is None or v == "": return 0
+        try: return int(v)
+        except: return 0
+
+    @field_validator('rating', mode='before')
+    @classmethod
+    def parse_float_safely(cls, v):
+        if v is None or v == "": return 0.0
+        try: return float(v)
+        except: return 0.0
+    
+    @field_validator('summary', mode='before')
+    @classmethod
+    def parse_string_safely(cls, v):
+        if v is None: return "Details not available"
+        return str(v)
+
+class DestinationAnalysis(BaseModel):
+    summary: str = Field(default="Summary unavailable")
+    weather_forecast: str = Field(default="Weather data unavailable")
+    key_regions: List[str] = Field(default_factory=list)
+    attractions: List[str] = Field(default_factory=list)
+    cultural_and_safety_tips: str = Field(default="Exercise normal precautions")
+
 class LogisticsAnalysis(BaseModel):
-    """
-    The detailed logistics report from the Logistics Coordinator agent.
-    """
-    flight_options: List[FlightOption] = Field(..., description="A list of the best flight options found.")
-    hotel_options: List[HotelOption] = Field(..., description="A list of 3-5 suitable hotel options.")
-    logistics_summary: str = Field(..., description="A summary of the recommended choices and total estimated cost for booking.")
+    flight_options: List[FlightOption] = Field(default_factory=list)
+    hotel_options: List[HotelOption] = Field(default_factory=list)
+    logistics_summary: str = Field(default="Details below.")
 
 # ==============================================================================
-# Stage 3 & 4: Curation Input and The Final Itinerary Output
+# Stage 3 & 4: Final Itinerary
 # ==============================================================================
 
 class Activity(BaseModel):
-    """
-    A single activity or event within a day of the itinerary.
-    """
-    time: str = Field(..., description="The time of the activity (e.g., '9:00 AM', 'Afternoon').")
-    type: Literal["Travel", "Dining", "Activity", "Accommodation"] = Field(..., description="The type of activity.")
-    title: str = Field(..., description="A short, descriptive title for the activity.")
-    description: str = Field(..., description="A detailed description of the activity.")
-    estimated_cost_usd: Optional[int] = Field(None, description="The estimated cost for this activity.")
+    time: str
+    type: str
+    title: str
+    description: str
+    estimated_cost_usd: Optional[int] = 0
+
+    @field_validator('estimated_cost_usd', mode='before')
+    @classmethod
+    def handle_none_cost(cls, v):
+        if v is None or v == "": return 0
+        return v
 
 class DailyPlan(BaseModel):
-    """
-    A plan for a single day of the trip.
-    """
-    day: int = Field(..., description="The day number (e.g., 1, 2, 3).")
-    date: str = Field(..., description="The date for this day's plan in YYYY-MM-DD format.")
-    title: str = Field(..., description="A catchy title for the day (e.g., 'Arrival in Paris & Marais Exploration').")
-    activities: List[Activity] = Field(..., description="A list of activities planned for the day.")
+    day: int
+    date: str = ""
+    title: str
+    activities: List[Activity] = Field(default_factory=list)
 
 class FinalItinerary(BaseModel):
-    """
-    The complete, final travel itinerary produced by the crew.
-    This is the master object that will be saved to the database and sent to the frontend.
-    """
-    trip_title: str = Field(..., description="A creative and descriptive title for the overall trip.")
-    destination: str = Field(..., description="The primary destination.")
-    trip_summary: str = Field(..., description="A brief, engaging paragraph summarizing the entire trip experience.")
-    chosen_flight: FlightOption = Field(..., description="The final selected flight details.")
-    chosen_hotel: HotelOption = Field(..., description="The final selected hotel details.")
-    budget_overview: str = Field(..., description="A summary of the budget allocation (flights, hotel, activities).")
-    daily_plans: List[DailyPlan] = Field(..., description="The day-by-day itinerary.")
+    trip_title: str
+    destination: str
+    trip_summary: str
+    chosen_flight: FlightOption
+    chosen_hotel: HotelOption
+    budget_overview: str
+    daily_plans: List[DailyPlan]

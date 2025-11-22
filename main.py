@@ -1,9 +1,9 @@
-# src/main.py
 import os
+import re
+import json
 from typing import List
 from dotenv import load_dotenv
 from crewai import Crew, LLM
-from pydantic import BaseModel, Field
 
 # --- Agent Creators ---
 from agents.lead_planner import create_lead_planner_agent
@@ -23,19 +23,14 @@ from schemas.itinerary_schemas import (
     DeconstructedQuery,
     DestinationAnalysis,
     LogisticsAnalysis,
-    DailyPlan,
-    FinalItinerary
+    FinalItinerary,
+    DailyPlan
 )
 
 load_dotenv()
 
-# --- Helper Schema for List Parsing ---
-class TripSchedule(BaseModel):
-    days: List[DailyPlan] = Field(..., description="The list of daily plans.")
-
 class TripPlannerCrew:
     def __init__(self):
-        # Helper to safely get LLM with fallback to main key
         def get_llm(env_var_name: str):
             api_key = os.getenv(env_var_name) or os.getenv("GOOGLE_API_KEY")
             if not api_key:
@@ -44,7 +39,25 @@ class TripPlannerCrew:
             return LLM(
                 model="gemini/gemini-2.0-flash-lite-preview",
                 api_key=api_key,
-                temperature=0.7
+                temperature=0.7,
+                 safety_settings=[
+                    {
+                        "category": "HARM_CATEGORY_HARASSMENT",
+                        "threshold": "BLOCK_NONE",
+                    },
+                    {
+                        "category": "HARM_CATEGORY_HATE_SPEECH",
+                        "threshold": "BLOCK_NONE",
+                    },
+                    {
+                        "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                        "threshold": "BLOCK_NONE",
+                    },
+                    {
+                        "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+                        "threshold": "BLOCK_NONE",
+                    },
+                ]
             )
 
         print("🔑 Initializing Agent LLMs...")
@@ -57,50 +70,61 @@ class TripPlannerCrew:
         print(f"\n✈️  STARTING TRIP PLANNER FOR: '{user_query}'")
 
         # ====================================================
-        # STAGE 1: LEAD PLANNER (Deconstruct)
+        # STAGE 1: LEAD PLANNER
         # ====================================================
         print("\n🕵️  Stage 1: Deconstructing User Query...")
         planner_agent = create_lead_planner_agent(self.planner_llm)
         planner_task = create_planner_task(planner_agent, user_query)
         
-        crew_s1 = Crew(agents=[planner_agent], tasks=[planner_task], verbose=True)
+        crew_s1 = Crew(
+            agents=[planner_agent], 
+            tasks=[planner_task], 
+            verbose=True,
+            max_rpm=10
+        )
         result_s1 = crew_s1.kickoff()
         
         trip_details: DeconstructedQuery = result_s1.pydantic
         print(f"✅ Trip Details Extracted: {trip_details}")
 
         # ====================================================
-        # 🛑 STRICT VALIDATION GATE
+        # 🛑 STRICT VALIDATION GATE (THE BOUNCER)
         # ====================================================
         missing = []
 
-        # Check all critical fields
-        if not trip_details.destination or trip_details.destination.lower() == "none":
-            missing.append("Destination")
-        if not trip_details.origin or trip_details.origin.lower() == "none":
-            missing.append("Origin City")
-        if not trip_details.start_date or trip_details.start_date.lower() == "none":
-            missing.append("Start Date")
-        if not trip_details.end_date or trip_details.end_date.lower() == "none":
-            missing.append("End Date")
-        if not trip_details.travelers or trip_details.travelers.lower() == "none":
-            missing.append("Number of Travelers")
+        # 1. Destination
+        if not trip_details.destination or trip_details.destination.lower() in ["none", "null", "", "unknown"]:
+            missing.append("Where do you want to go?")
+
+        # 2. Origin
+        if not trip_details.origin or trip_details.origin.lower() in ["none", "null", "", "unknown"]:
+            missing.append("Where are you flying from?")
+
+        # 3. Dates
+        if not trip_details.start_date:
+            missing.append("When do you want to start the trip?")
+        if not trip_details.end_date:
+            missing.append("When do you want to return?")
+
+        # 4. Travelers
+        if not trip_details.travelers or trip_details.travelers.lower() in ["none", "null", "", "0"]:
+            missing.append("How many people are traveling?")
+
+        # 5. Budget
         if not trip_details.budget_usd or trip_details.budget_usd == 0:
-            missing.append("Budget")
+            missing.append("What is your total budget in USD?")
 
-        # Check date logic
-        if trip_details.start_date and trip_details.end_date:
-            if trip_details.start_date > trip_details.end_date:
-                raise ValueError("Invalid Dates: Start Date cannot be after End Date.")
-
+        # --- FINAL DECISION ---
         if missing:
-            error_msg = f"We are missing details to plan your trip. Please provide: {', '.join(missing)}."
-            raise ValueError(error_msg)
+            # Format list with bullets
+            missing_str = "\n• " + "\n• ".join(missing)
+            # Throw special error that Frontend recognizes
+            raise ValueError(f"Missing Stuff:{missing_str}")
 
-        print(f"✅ Validation Passed. All systems go.")
+        print(f"✅ Validation Passed. All details present.")
 
         # ====================================================
-        # STAGE 2: PARALLEL RESEARCH (Analyst & Logistics)
+        # STAGE 2: PARALLEL RESEARCH
         # ====================================================
         print("\n🌍 Stage 2: Researching & Booking...")
         
@@ -113,25 +137,26 @@ class TripPlannerCrew:
         crew_s2 = Crew(
             agents=[dest_agent, logistics_agent],
             tasks=[dest_task, logistics_task],
-            verbose=True
+            verbose=True,
+            max_rpm=10
         )
         crew_s2.kickoff()
 
-        # Extract outputs directly from tasks
         destination_output: DestinationAnalysis = dest_task.output.pydantic
         logistics_output: LogisticsAnalysis = logistics_task.output.pydantic
-        print("✅ Research & Logistics Complete.")
 
         # ====================================================
         # STAGE 3: EXPERIENCE CURATOR
         # ====================================================
         print("\n🎨 Stage 3: Curating Daily Activities...")
         
-        # Calculate days
         from datetime import datetime
-        s_date = datetime.strptime(trip_details.start_date, "%Y-%m-%d")
-        e_date = datetime.strptime(trip_details.end_date, "%Y-%m-%d")
-        duration = (e_date - s_date).days + 1
+        try:
+            s_date = datetime.strptime(trip_details.start_date, "%Y-%m-%d")
+            e_date = datetime.strptime(trip_details.end_date, "%Y-%m-%d")
+            duration = (e_date - s_date).days + 1
+        except:
+            duration = 5 # Fallback
 
         curator_agent = create_experience_curator_agent(
             self.curator_llm, 
@@ -146,47 +171,53 @@ class TripPlannerCrew:
             logistics_output
         )
         
-        # Use the helper container for List validation
-        curation_task.output_pydantic = TripSchedule
-
-        crew_s3 = Crew(agents=[curator_agent], tasks=[curation_task], verbose=True)
+        crew_s3 = Crew(
+            agents=[curator_agent], 
+            tasks=[curation_task], 
+            verbose=True,
+            max_rpm=10
+        )
         result_s3 = crew_s3.kickoff()
         
-        trip_schedule: TripSchedule = result_s3.pydantic
-        daily_plans_list = trip_schedule.days
-        print(f"✅ Curation Complete: {len(daily_plans_list)} days planned.")
+        # Robust JSON Parsing
+        raw_output = str(result_s3.raw)
+        clean_output = re.sub(r'```json\s*', '', raw_output)
+        clean_output = re.sub(r'```', '', clean_output).strip()
+
+        daily_plans_list = []
+        try:
+            data = json.loads(clean_output)
+            daily_plans_list = data.get('days', [])
+        except json.JSONDecodeError:
+            print("⚠️ Error parsing Curator JSON. Using empty list.")
+            daily_plans_list = []
 
         # ====================================================
-        # STAGE 4: LEAD PLANNER (Assembly)
+        # STAGE 4: ASSEMBLY
         # ====================================================
         print("\n📑 Stage 4: Assembling Final Itinerary...")
         
+        daily_plan_objects = []
+        for day in daily_plans_list:
+            try:
+                daily_plan_objects.append(DailyPlan(**day))
+            except Exception as e:
+                print(f"⚠️ Skipping invalid day: {e}")
+
         assembly_task = create_assembly_task(
             planner_agent,
             destination_output,
             logistics_output,
-            daily_plans_list
+            daily_plan_objects
         )
 
-        crew_s4 = Crew(agents=[planner_agent], tasks=[assembly_task], verbose=True)
+        crew_s4 = Crew(
+            agents=[planner_agent], 
+            tasks=[assembly_task], 
+            verbose=True,
+            max_rpm=10
+        )
         result_s4 = crew_s4.kickoff()
         
         final_itinerary: FinalItinerary = result_s4.pydantic
-        print("✅ Final Itinerary Assembled!")
-
         return final_itinerary.model_dump()
-
-if __name__ == "__main__":
-    # --- LOCAL TEST AREA ---
-    planner = TripPlannerCrew()
-
-
-    good_query = "I want a 3 day trip to Lahore from Madinah, Saudia Arabia for 2 adults, starting March 10th 2025, budget $2000."
-    
-    try:
-        result = planner.run(good_query)
-        import json
-        print("\n\n👇 FINAL ITINERARY OUTPUT 👇")
-        print(json.dumps(result, indent=2))
-    except Exception as e:
-        print(f"\n❌ ERROR: {e}")
