@@ -1,20 +1,21 @@
+# destination_analyst_test.py
 import os
 from dotenv import load_dotenv
-from crewai import Task, Crew, LLM
+from crewai import Crew, LLM
 
 # Import custom components
 from schemas.itinerary_schemas import DeconstructedQuery, DestinationAnalysis
 from agents.destination_analyst import create_destination_analyst_agent
+from tasks.destination_tasks import create_destination_task # <-- ADDED THIS IMPORT
 
 # Load .env variables
 load_dotenv()
 
-# --- Initialize LLM (same as Logistics & Lead Planner) ---
+# --- Initialize LLM ---
 google_api_key = os.getenv("GOOGLE_API_KEY")
 if not google_api_key:
     raise ValueError("GOOGLE_API_KEY is not set in your .env file")
 
-# Same LLM as logistics (Gemini flash-lite)
 llm = LLM(
     model="gemini/gemini-2.0-flash-lite-preview",
     api_key=google_api_key,
@@ -38,21 +39,13 @@ def run_test():
         origin="Madinah, Saudia Arabia"
     )
 
-    # Create Crew Task
-    destination_task = Task(
-        description=f"""
-        Analyze this destination and produce a detailed destination report.
-        Use real-time tools: DuckDuckGo search, Wikipedia, OpenWeather, and safety extraction.
-
-        You MUST return a valid DestinationAnalysis JSON object.
-
-        Trip Query:
-        {query_data.model_dump_json(indent=2)}
-        """,
-        expected_output="A valid DestinationAnalysis JSON object.",
+    # --- MODIFIED PART ---
+    # Create Crew Task by calling the imported function
+    destination_task = create_destination_task(
         agent=destination_agent,
-        output_pydantic=DestinationAnalysis
+        query_data=query_data
     )
+    # --- END MODIFIED PART ---
 
     # Create crew and run the task
     crew = Crew(
