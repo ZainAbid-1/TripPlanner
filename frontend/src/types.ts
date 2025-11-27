@@ -1,11 +1,11 @@
-// src/types.ts
-
 export interface Activity {
   time: string;
-  type: "Travel" | "Dining" | "Activity" | "Accommodation";
+  type: string;
   title: string;
   description: string;
-  estimated_cost_usd?: number;
+  estimated_cost_usd: number;
+  location?: string;
+  booking_required?: boolean;
 }
 
 export interface DailyPlan {
@@ -13,6 +13,7 @@ export interface DailyPlan {
   date: string;
   title: string;
   activities: Activity[];
+  daily_budget?: number;
 }
 
 export interface FlightOption {
@@ -21,6 +22,8 @@ export interface FlightOption {
   duration_hours: number;
   stops: number;
   booking_url?: string;
+  departure_time?: string;
+  arrival_time?: string;
 }
 
 export interface HotelOption {
@@ -29,6 +32,8 @@ export interface HotelOption {
   rating: number;
   summary: string;
   booking_url?: string;
+  address?: string;
+  amenities: string[];
 }
 
 export interface FinalItinerary {
@@ -39,7 +44,6 @@ export interface FinalItinerary {
   chosen_hotel: HotelOption;
   budget_overview: string;
   daily_plans: DailyPlan[];
-  // We can infer these for the UI
-  total_budget?: number; 
-  travelers?: string; 
+  total_estimated_cost?: number;
+  travel_tips?: string;
 }

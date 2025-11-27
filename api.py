@@ -1,62 +1,218 @@
-# src/api.py
 import uvicorn
-from fastapi import FastAPI, HTTPException
+import re
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from main import TripPlannerCrew  # Importing your AI Orchestrator
+from pydantic import BaseModel, Field, field_validator
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from main import OptimizedTripPlannerCrew
+from utils.cache_manager import cache
 
-# 1. Initialize FastAPI
-app = FastAPI(title="VoyageAI Backend")
+# =====================================================
+# FASTAPI APP SETUP
+# =====================================================
+app = FastAPI(
+    title="VoyageAI Backend API",
+    description="Optimized multi-agent travel planning system",
+    version="2.0.0"
+)
 
-# 2. Setup CORS (CRITICAL for React to talk to Python)
-# This allows localhost:3000 or localhost:5173 to send requests to port 8000
+# =====================================================
+# RATE LIMITING
+# =====================================================
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# =====================================================
+# CORS CONFIGURATION
+# =====================================================
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with ["http://localhost:3000"]
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 3. Define the Request Schema
+# =====================================================
+# REQUEST/RESPONSE MODELS
+# =====================================================
 class TripRequest(BaseModel):
-    query: str
-
-# 4. The Main Endpoint
-@app.post("/api/plan-trip")
-async def generate_itinerary(request: TripRequest):
-    """
-    Receives a text query (e.g., "Trip to Paris"), runs the CrewAI agents,
-    and returns a structured FinalItinerary JSON.
-    """
-    print(f"📥 Received request: {request.query}")
+    query: str = Field(..., max_length=500, min_length=10)
+    conversation_id: str = Field(None, max_length=100)
     
-    try:
-        # Initialize the Crew
-        crew = TripPlannerCrew()
+    # Updated to Pydantic V2 style validator
+    @field_validator('query')
+    @classmethod
+    def sanitize_query(cls, v):
+        """Prevent prompt injection and malicious input"""
+        dangerous_patterns = [
+            r'```',  # Code blocks
+            r'<script>',  # XSS
+            r'DROP\s+TABLE',  # SQL injection
+            r'IGNORE\s+PREVIOUS',  # Prompt injection
+            r'SYSTEM:',  # System prompt override
+        ]
         
-        # Run the Agents
-        result = crew.run(request.query)
+        for pattern in dangerous_patterns:
+            if re.search(pattern, v, re.IGNORECASE):
+                raise ValueError("Invalid input detected")
         
-        # Return the Final JSON
-        return result
+        return v.strip()
 
-    except ValueError as ve:
-        # Catch validation errors (Missing Origin, Budget, etc.)
-        # Send 400 Bad Request so frontend shows the red alert
-        print(f"❌ Validation Error: {str(ve)}")
-        raise HTTPException(status_code=400, detail=str(ve))
-        
-    except Exception as e:
-        # Catch system crashes
-        print(f"🔥 Internal Server Error: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+# =====================================================
+# GLOBAL CREW INSTANCE
+# =====================================================
+crew_instance = None
 
-# 5. Health Check Endpoint (Optional but good practice)
+def get_crew():
+    """Get or create crew instance"""
+    global crew_instance
+    if crew_instance is None:
+        crew_instance = OptimizedTripPlannerCrew()
+    return crew_instance
+
+# =====================================================
+# ENDPOINTS
+# =====================================================
+
 @app.get("/health")
 def health_check():
-    return {"status": "active", "service": "VoyageAI API"}
+    """Health check endpoint"""
+    cache_stats = cache.get_stats()
+    return {
+        "status": "active",
+        "service": "VoyageAI API v2.0",
+        "cache_stats": cache_stats
+    }
+
+@app.post("/api/plan-trip")
+@limiter.limit("5/minute")
+async def generate_itinerary(request: Request, trip_request: TripRequest):
+    """
+    Main endpoint: Generate travel itinerary
+    NOTE: 'request: Request' is required for SlowAPI rate limiting to work.
+    """
+    print(f"\n📥 Received request: {trip_request.query}")
+    
+    try:
+        # Get crew instance
+        crew = get_crew()
+        
+        # Run the optimized async pipeline
+        result = await crew.run_async(trip_request.query)
+        
+        print(f"✅ Successfully generated itinerary")
+        return result
+        
+    except ValueError as ve:
+        # Handle validation errors
+        error_msg = str(ve)
+        print(f"❌ Validation Error: {error_msg}")
+        
+        if error_msg.startswith("VALIDATION:"):
+            clean_msg = error_msg.replace("VALIDATION:", "").strip()
+            raise HTTPException(
+                status_code=400,
+                detail=f"VALIDATION:{clean_msg}"
+            )
+        else:
+            raise HTTPException(status_code=400, detail=error_msg)
+    
+    except Exception as e:
+        # Handle system errors
+        print(f"🔥 Internal Server Error: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
+        )
+
+@app.websocket("/ws/plan-trip")
+async def websocket_itinerary(websocket: WebSocket):
+    await websocket.accept()
+    try:
+        data = await websocket.receive_json()
+        query = data.get("query", "")
+        
+        if not query:
+            await websocket.send_json({"error": "No query provided", "stage": 0})
+            await websocket.close()
+            return
+        
+        await websocket.send_json({"stage": 1, "status": "Processing...", "progress": 10})
+        
+        crew = get_crew()
+        result = await crew.run_async(query)
+        
+        await websocket.send_json({
+            "stage": 4, 
+            "status": "Complete!", 
+            "progress": 100, 
+            "result": result
+        })
+        
+    except WebSocketDisconnect:
+        print("Client disconnected")
+    except Exception as e:
+        print(f"WebSocket error: {e}")
+    finally:
+        await websocket.close()
+
+# =====================================================
+# ADMIN CACHE ENDPOINTS
+# =====================================================
+@app.post("/api/cache/clear")
+def clear_cache():
+    cache.clear()
+    return {"status": "Cache cleared"}
+
+@app.get("/api/cache/stats")
+def get_cache_stats():
+    return cache.get_stats()
+
+# =====================================================
+# ERROR HANDLERS (Must return JSONResponse)
+# =====================================================
+
+@app.exception_handler(404)
+async def not_found_handler(request: Request, exc):
+    return JSONResponse(
+        status_code=404,
+        content={
+            "detail": "Endpoint not found",
+            "error_type": "not_found"
+        }
+    )
+
+@app.exception_handler(500)
+async def internal_error_handler(request: Request, exc):
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": "Internal server error",
+            "error_type": "internal_error"
+        }
+    )
+
+# =====================================================
+# RUN SERVER
+# =====================================================
 
 if __name__ == "__main__":
-    # Run the server
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    print("🚀 Starting VoyageAI API Server...")
+    print("📍 Listening on http://0.0.0.0:8000")
+    print("📚 Docs available at http://localhost:8000/docs")
+    
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=8000,
+        log_level="info"
+    )
