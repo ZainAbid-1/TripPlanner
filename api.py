@@ -42,6 +42,17 @@ app.add_middleware(
 )
 
 # =====================================================
+# DISABLE CACHING GLOBALLY
+# =====================================================
+@app.middleware("http")
+async def add_no_cache_headers(request, call_next):
+    response = await call_next(request)
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0, private"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
+# =====================================================
 # REQUEST/RESPONSE MODELS
 # =====================================================
 class TripRequest(BaseModel):
@@ -94,13 +105,22 @@ def health_check():
     }
 
 @app.post("/api/plan-trip")
-@limiter.limit("5/minute")
+@limiter.limit("10/minute")
 async def generate_itinerary(request: Request, trip_request: TripRequest):
     """
     Main endpoint: Generate travel itinerary
     NOTE: 'request: Request' is required for SlowAPI rate limiting to work.
     """
-    print(f"\n📥 Received request: {trip_request.query}")
+    import uuid
+    from datetime import datetime
+    
+    query_id = str(uuid.uuid4())[:8]
+    request_time = datetime.now().isoformat()
+    
+    cache.clear()
+    cache.cleanup_expired()
+    print(f"\n📥 Received request [{query_id}]: {trip_request.query}")
+    print(f"⏱️  Request Time: {request_time}")
     
     try:
         # Get crew instance
@@ -109,7 +129,12 @@ async def generate_itinerary(request: Request, trip_request: TripRequest):
         # Run the optimized async pipeline
         result = await crew.run_async(trip_request.query)
         
-        print(f"✅ Successfully generated itinerary")
+        print(f"✅ Successfully generated itinerary [{query_id}]")
+        
+        if isinstance(result, dict):
+            result["_request_id"] = query_id
+            result["_request_time"] = request_time
+        
         return result
         
     except ValueError as ve:

@@ -42,6 +42,8 @@ export interface FinalItinerary {
   trip_summary: string;
   chosen_flight: FlightOption;
   chosen_hotel: HotelOption;
+  all_flights?: FlightOption[];
+  all_hotels?: HotelOption[];
   budget_overview: string;
   daily_plans: DailyPlan[];
   total_estimated_cost?: number;

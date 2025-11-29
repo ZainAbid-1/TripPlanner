@@ -3,7 +3,7 @@ import os
 import json
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from crewai import Crew, LLM
 
@@ -30,30 +30,23 @@ from schemas.itinerary_schemas import (
     DestinationAnalysis,
     LogisticsAnalysis,
     DailyPlan,
-    FinalItinerary
+    FinalItinerary,
+    FlightOption,
+    HotelOption
 )
 
-# Import cache
 from utils.cache_manager import cache
 
 load_dotenv()
 
+os.environ["CREWAI_TELEMETRY_OPT_OUT"] = "true"
+os.environ["CREWAI_REQUEST_TIMEOUT"] = "300" 
+
 class OptimizedTripPlannerCrew:
-    """
-    Optimized multi-agent system with:
-    - Async parallel execution
-    - Aggressive caching
-    - Error recovery
-    - Fast LLM configuration
-    """
-    
     def __init__(self):
         print("🔑 Initializing Optimized TripPlanner...")
-        
-        # Create thread pool for parallel execution
         self.executor = ThreadPoolExecutor(max_workers=4)
         
-        # Initialize LLMs once (connection reuse)
         self.planner_llm = self._get_optimized_llm("GOOGLE_API_KEY_PLANNER")
         self.analyst_llm = self._get_optimized_llm("GOOGLE_API_KEY_ANALYST")
         self.logistics_llm = self._get_optimized_llm("GOOGLE_API_KEY_LOGISTICS")
@@ -62,312 +55,203 @@ class OptimizedTripPlannerCrew:
         print("✅ Initialization complete")
     
     def _get_optimized_llm(self, env_var_name: str) -> LLM:
-        """Create optimized LLM instance"""
         api_key = os.getenv(env_var_name) or os.getenv("GOOGLE_API_KEY")
         if not api_key:
             raise ValueError(f"Missing API Key: Set {env_var_name} or GOOGLE_API_KEY")
         
         return LLM(
-            model="gemini/gemini-2.0-flash-lite-preview",
+            model="gemini/gemini-2.0-flash", 
             api_key=api_key,
-            temperature=0.3,  # Lower for faster, more consistent output
-            max_tokens=2048,  # Limit output length
-            timeout=30,  # Prevent hanging
-            safety_settings=[
-                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-            ]
+            temperature=0.3,
+            max_tokens=4000,
+            timeout=300, 
+            max_retries=3
         )
     
+    def _sanitize_and_patch_query(self, query_data: DeconstructedQuery) -> DeconstructedQuery:
+        today = datetime.now()
+        if not query_data.start_date:
+            print("⚠️  LLM failed to output date. Python calculating 'Next Weekend'...")
+            days_ahead = (4 - today.weekday() + 7) % 7
+            if days_ahead == 0: days_ahead = 7
+            next_friday = today + timedelta(days=days_ahead)
+            query_data.start_date = next_friday.strftime("%Y-%m-%d")
+        
+        if not query_data.end_date:
+            try:
+                start = datetime.strptime(query_data.start_date, "%Y-%m-%d")
+                end = start + timedelta(days=3)
+                query_data.end_date = end.strftime("%Y-%m-%d")
+            except: pass
+        
+        if not query_data.budget_usd or query_data.budget_usd < 100:
+            query_data.budget_usd = 2000
+            
+        return query_data
+
     async def run_async(self, user_query: str) -> dict:
-        """
-        Main execution flow with parallel processing.
-        Expected time: 15-25 seconds (down from 60-80 seconds)
-        """
         start_time = datetime.now()
         print(f"\n✈️  STARTING OPTIMIZED TRIP PLANNER")
         print(f"📝 Query: '{user_query}'")
-        print(f"⏰ Start time: {start_time.strftime('%H:%M:%S')}")
         
-        # ============================================================
-        # STAGE 1: Query Parsing (Fast - No external calls)
-        # ============================================================
+        # --- STAGE 1: PARSING ---
         print("\n🕵️  [Stage 1/4] Parsing your request...")
-        trip_details = await self._run_stage_1(user_query)
-        print(f"✅ Parsed: {trip_details.destination or 'Unknown'} | Budget: ${trip_details.budget_usd or 0}")
-        
-        # ============================================================
-        # VALIDATION GATE (Moved here for speed)
-        # ============================================================
-        print("\n🔍 Validating trip details...")
-        self._validate_or_raise(trip_details)
-        print("✅ All required information present")
-        
-        # ============================================================
-        # STAGE 2: PARALLEL Research (Destination + Logistics + Weather)
-        # ============================================================
+        try:
+            trip_details_raw = await self._run_stage_1(user_query)
+            trip_details = self._sanitize_and_patch_query(trip_details_raw)
+            print(f"✅ Parsed & Patched: {trip_details.destination} | {trip_details.start_date} | ${trip_details.budget_usd}")
+            self._validate_or_raise(trip_details)
+        except Exception as e:
+            print(f"❌ Stage 1 Failed: {e}")
+            raise ValueError("Could not understand the trip request. Please be more specific.")
+
+        # --- STAGE 2: RESEARCH ---
         print("\n🚀 [Stage 2/4] Researching destination & logistics (PARALLEL)...")
-        print("   → Destination analyst searching...")
-        print("   → Logistics coordinator searching...")
-        print("   → Weather lookup running...")
         
-        # Run all 3 tasks in parallel
         destination_task = self._run_destination_analysis(trip_details)
         logistics_task = self._run_logistics_search(trip_details)
         
-        # Wait for both to complete
-        results = await asyncio.gather(
-            destination_task,
-            logistics_task,
-            return_exceptions=True  # Don't crash if one fails
-        )
+        results = await asyncio.gather(destination_task, logistics_task, return_exceptions=True)
         
         destination_output = results[0]
         logistics_output = results[1]
         
-        # Handle failures gracefully
-        if isinstance(destination_output, Exception):
-            print(f"⚠️  Destination analysis failed: {destination_output}")
+        if isinstance(destination_output, Exception) or not destination_output:
+            print(f"⚠️ Dest Error: {destination_output}")
             destination_output = self._get_fallback_destination(trip_details.destination)
-        else:
-            print(f"✅ Found {len(destination_output.attractions)} attractions")
-        
-        if isinstance(logistics_output, Exception):
-            print(f"⚠️  Logistics search failed: {logistics_output}")
+            
+        if isinstance(logistics_output, Exception) or not logistics_output:
+            print(f"⚠️ Logistics Error: {logistics_output}")
             logistics_output = self._get_fallback_logistics()
-        else:
-            print(f"✅ Found {len(logistics_output.flight_options)} flights, {len(logistics_output.hotel_options)} hotels")
-        
-        # ============================================================
-        # STAGE 3: Curation (Create itinerary)
-        # ============================================================
+            
+        if not logistics_output.flight_options: logistics_output.flight_options = []
+        if not logistics_output.hotel_options: logistics_output.hotel_options = []
+            
+        # --- STAGE 3: CURATION ---
         print("\n🎨 [Stage 3/4] Creating your personalized itinerary...")
-        daily_plans = await self._run_curation(
-            trip_details, destination_output, logistics_output
-        )
-        print(f"✅ Created {len(daily_plans)} days of activities")
+        daily_plans = await self._run_curation(trip_details, destination_output, logistics_output)
         
-        # ============================================================
-        # STAGE 4: Assembly (Lightweight formatting)
-        # ============================================================
+        # --- STAGE 4: ASSEMBLY ---
         print("\n📑 [Stage 4/4] Assembling final itinerary...")
-        final_itinerary = await self._run_assembly(
-            destination_output, logistics_output, daily_plans
-        )
+        final_itinerary = await self._run_assembly(destination_output, logistics_output, daily_plans)
         
-        # ============================================================
-        # COMPLETE
-        # ============================================================
         end_time = datetime.now()
-        duration = (end_time - start_time).total_seconds()
-        
-        print(f"\n🎉 COMPLETE!")
-        print(f"⏱️  Total time: {duration:.1f} seconds")
-        print(f"📊 Cache stats: {cache.get_stats()}")
+        print(f"\n🎉 COMPLETE! Time: {(end_time - start_time).total_seconds():.1f}s")
         
         return final_itinerary.model_dump()
     
-    # ============================================================
-    # STAGE EXECUTION METHODS
-    # ============================================================
-    
+    # --- HELPER METHODS ---
     async def _run_stage_1(self, user_query: str) -> DeconstructedQuery:
-        """Stage 1: Fast query parsing"""
-        planner_agent = create_lead_planner_agent(self.planner_llm)
-        planner_task = create_planner_task(planner_agent, user_query)
-        
-        crew = Crew(
-            agents=[planner_agent],
-            tasks=[planner_task],
-            verbose=False,
-            max_rpm=30
-        )
-        
+        agent = create_lead_planner_agent(self.planner_llm)
+        task = create_planner_task(agent, user_query)
+        crew = Crew(agents=[agent], tasks=[task], verbose=False)
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(self.executor, crew.kickoff)
         return result.pydantic
     
-    async def _run_destination_analysis(self, trip_details: DeconstructedQuery) -> DestinationAnalysis:
-        """Stage 2a: Destination research"""
-        dest_agent = create_destination_analyst_agent(self.analyst_llm)
-        dest_task = create_destination_task(dest_agent, trip_details)
-        
-        crew = Crew(
-            agents=[dest_agent],
-            tasks=[dest_task],
-            verbose=False,
-            max_rpm=30
-        )
-        
+    async def _run_destination_analysis(self, trip_details):
+        agent = create_destination_analyst_agent(self.analyst_llm)
+        task = create_destination_task(agent, trip_details)
+        crew = Crew(agents=[agent], tasks=[task], verbose=True)
         loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(self.executor, crew.kickoff)
-        return dest_task.output.pydantic
+        await loop.run_in_executor(self.executor, crew.kickoff)
+        return task.output.pydantic
     
-    async def _run_logistics_search(self, trip_details: DeconstructedQuery) -> LogisticsAnalysis:
-        """Stage 2b: Flight/Hotel search"""
-        logistics_agent = create_logistics_agent(self.logistics_llm)
-        logistics_task = create_logistics_task(logistics_agent, trip_details)
-        
-        crew = Crew(
-            agents=[logistics_agent],
-            tasks=[logistics_task],
-            verbose=False,
-            max_rpm=30
-        )
-        
+    async def _run_logistics_search(self, trip_details):
+        agent = create_logistics_agent(self.logistics_llm)
+        task = create_logistics_task(agent, trip_details)
+        crew = Crew(agents=[agent], tasks=[task], verbose=True)
         loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(self.executor, crew.kickoff)
-        return logistics_task.output.pydantic
+        await loop.run_in_executor(self.executor, crew.kickoff)
+        return task.output.pydantic
     
-    async def _run_curation(
-        self,
-        trip_details: DeconstructedQuery,
-        dest_output: DestinationAnalysis,
-        logistics_output: LogisticsAnalysis
-    ) -> list:
-        """Stage 3: Create daily itinerary"""
-        from datetime import datetime as dt
-        
+    async def _run_curation(self, trip_details, dest_data, log_data):
         try:
-            s_date = dt.strptime(trip_details.start_date, "%Y-%m-%d")
-            e_date = dt.strptime(trip_details.end_date, "%Y-%m-%d")
-            duration = (e_date - s_date).days + 1
-        except:
-            duration = 5
-        
-        curator_agent = create_experience_curator_agent(
-            self.curator_llm,
-            trip_duration_days=duration,
-            interests=trip_details.interests
-        )
-        
-        curation_task = create_curation_task(
-            curator_agent,
-            trip_details,
-            dest_output,
-            logistics_output
-        )
-        
-        crew = Crew(
-            agents=[curator_agent],
-            tasks=[curation_task],
-            verbose=False,
-            max_rpm=30
-        )
-        
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(self.executor, crew.kickoff)
-        
-        # Parse JSON output
-        import re
-        raw = str(result.raw)
-        clean = re.sub(r'```json\s*', '', raw)
-        clean = re.sub(r'```', '', clean).strip()
-        
-        try:
-            data = json.loads(clean)
-            daily_plans_list = data.get('days', [])
-            return [DailyPlan(**day) for day in daily_plans_list if day]
-        except Exception as e:
-            print(f"⚠️  Curation parsing error: {e}")
-            return []
-    
-    async def _run_assembly(
-        self,
-        dest_output: DestinationAnalysis,
-        logistics_output: LogisticsAnalysis,
-        daily_plans: list
-    ) -> FinalItinerary:
-        """Stage 4: Final assembly"""
-        planner_agent = create_lead_planner_agent(self.planner_llm)
-        assembly_task = create_assembly_task(
-            planner_agent,
-            dest_output,
-            logistics_output,
-            daily_plans
-        )
-        
-        crew = Crew(
-            agents=[planner_agent],
-            tasks=[assembly_task],
-            verbose=False,
-            max_rpm=30
-        )
-        
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(self.executor, crew.kickoff)
-        return result.pydantic
-    
-    # ============================================================
-    # VALIDATION & FALLBACKS
-    # ============================================================
-    
-    def _validate_or_raise(self, trip_details: DeconstructedQuery):
-        """Strict validation gate"""
-        missing = []
-        
-        if not trip_details.destination or trip_details.destination.lower() in ["none", "null", "", "unknown"]:
-            missing.append("Where do you want to go?")
-        
-        if not trip_details.origin or trip_details.origin.lower() in ["none", "null", "", "unknown"]:
-            missing.append("Where are you flying from?")
-        
-        if not trip_details.start_date:
-            missing.append("When do you want to start the trip?")
-        
-        if not trip_details.end_date:
-            missing.append("When do you want to return?")
-        
-        if not trip_details.travelers or trip_details.travelers.lower() in ["none", "null", "", "0"]:
-            missing.append("How many people are traveling?")
-        
-        if not trip_details.budget_usd or trip_details.budget_usd == 0:
-            missing.append("What is your total budget in USD?")
-        
-        if missing:
-            missing_str = "\n• " + "\n• ".join(missing)
-            raise ValueError(f"VALIDATION:{missing_str}")
-    
-    def _get_fallback_destination(self, dest_name: str) -> DestinationAnalysis:
-        """Fallback if destination research fails"""
-        return DestinationAnalysis(
-            summary=f"{dest_name} is a popular travel destination with rich culture and attractions.",
-            weather_forecast="Check local weather forecasts closer to your travel date.",
-            key_regions=["City Center", "Historic District"],
-            attractions=["Local landmarks", "Museums", "Parks", "Restaurants"],
-            cultural_and_safety_tips="Exercise normal travel precautions. Research local customs."
-        )
-    
-    def _get_fallback_logistics(self) -> LogisticsAnalysis:
-        """Fallback if logistics search fails"""
-        return LogisticsAnalysis(
-            flight_options=[],
-            hotel_options=[],
-            logistics_summary="Unable to fetch live pricing. Please search manually using the booking links provided."
-        )
-    
-    # ============================================================
-    # SYNCHRONOUS WRAPPER (for FastAPI compatibility)
-    # ============================================================
-    
-    def run(self, user_query: str) -> dict:
-        """Synchronous wrapper for async execution"""
-        return asyncio.run(self.run_async(user_query))
+            s = datetime.strptime(trip_details.start_date, "%Y-%m-%d")
+            e = datetime.strptime(trip_details.end_date, "%Y-%m-%d")
+            days = (e - s).days + 1
+        except: days = 3
 
-# ============================================================
-# MAIN ENTRY POINT (for testing)
-# ============================================================
+        agent = create_experience_curator_agent(self.curator_llm, days, trip_details.interests)
+        task = create_curation_task(agent, trip_details, dest_data, log_data)
+        crew = Crew(agents=[agent], tasks=[task], verbose=False)
+        
+        try:
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(self.executor, crew.kickoff)
+            
+            raw_json = str(result.raw).strip()
+            if "```json" in raw_json:
+                raw_json = raw_json.split("```json")[1].split("```")[0].strip()
+            elif "```" in raw_json:
+                raw_json = raw_json.split("```")[1].split("```")[0].strip()
+                
+            data = json.loads(raw_json)
+            return [DailyPlan(**day) for day in data.get('days', [])]
+        except Exception as e:
+            print(f"⚠️ Curation Failed: {e}. Generating fallback plan.")
+            return [DailyPlan(day=1, title="Arrival", activities=[
+                {"time": "14:00", "type": "Check-in", "title": "Hotel Check-in", "description": "Arrive and settle in.", "estimated_cost_usd": 0}
+            ])]
+            
+    async def _run_assembly(self, dest_data, log_data, daily_plans):
+        agent = create_lead_planner_agent(self.planner_llm)
+        task = create_assembly_task(agent, dest_data, log_data, daily_plans)
+        crew = Crew(agents=[agent], tasks=[task], verbose=False)
+        
+        try:
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(self.executor, crew.kickoff)
+            return result.pydantic
+        except Exception as e:
+            print(f"⚠️ Assembly Failed: {e}. Generating safe fallback.")
+            
+            # 🚀 ROBUST FALLBACK (Fixes the validation error)
+            
+            # Create Safe Dummy Flight if missing
+            safe_flight = log_data.flight_options[0] if log_data.flight_options else FlightOption(
+                airline="Check Online", price_usd=0, duration_hours=0, stops=0, 
+                booking_url="https://www.google.com/flights", departure_time="TBA", arrival_time="TBA"
+            )
+            
+            # Create Safe Dummy Hotel if missing
+            safe_hotel = log_data.hotel_options[0] if log_data.hotel_options else HotelOption(
+                name="Check Local Availability", price_per_night_usd=0, rating=0, summary="Details unavailable", 
+                booking_url="https://www.booking.com", address="City Center", amenities=[]
+            )
+
+            return FinalItinerary(
+                trip_title=f"Trip to {dest_data.key_regions[0] if dest_data.key_regions else 'Destination'}",
+                destination="Your Destination",
+                trip_summary="Here is your generated itinerary based on available data.",
+                chosen_flight=safe_flight,
+                chosen_hotel=safe_hotel,
+                all_flights=log_data.flight_options,
+                all_hotels=log_data.hotel_options,
+                budget_overview="Estimated based on typical costs.",
+                daily_plans=daily_plans,
+                total_estimated_cost=0
+            )
+
+    def _validate_or_raise(self, trip_details):
+        missing = []
+        if not trip_details.destination: missing.append("Destination")
+        if not trip_details.start_date: missing.append("Start Date")
+        if missing: raise ValueError(f"VALIDATION: Missing {', '.join(missing)}")
+            
+    def _get_fallback_destination(self, dest):
+        return DestinationAnalysis(
+            summary=f"Welcome to {dest}. A wonderful place to visit.", 
+            weather_forecast="Please check local forecasts.",
+            attractions=["City Center", "Local Museum", "Central Park"]
+        )
+        
+    def _get_fallback_logistics(self):
+        return LogisticsAnalysis(flight_options=[], hotel_options=[])
+
+    def run(self, user_query: str) -> dict:
+        return asyncio.run(self.run_async(user_query))
 
 if __name__ == "__main__":
     crew = OptimizedTripPlannerCrew()
-    
-    # Test query
-    test_query = "Trip to Paris from London next month for 2 people, budget $3000"
-    result = crew.run(test_query)
-    
-    print("\n" + "="*60)
-    print("FINAL ITINERARY")
-    print("="*60)
-    print(json.dumps(result, indent=2))
+    print(json.dumps(crew.run("Trip to Dubai next weekend"), indent=2))

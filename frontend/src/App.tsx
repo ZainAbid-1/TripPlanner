@@ -1,3 +1,4 @@
+// src/App.tsx
 import { useState } from 'react';
 import { Navigation } from './components/Navigation';
 import { LandingPage } from './components/LandingPage';
@@ -10,16 +11,16 @@ import { Footer } from './components/Footer';
 import { FinalItinerary } from './types';
 
 function App() {
-  // State for Navigation
-  const [currentScreen, setCurrentScreen] = useState<string>('home');
+  const [currentScreen, setCurrentScreen] = useState('home');
   
-  // State for Data (The Itinerary from Backend)
+  // 🔴 FIX: Initialize with null, NOT mock data. 
+  // If you had mock data here like "useState(mockParis)", delete it.
   const [tripData, setTripData] = useState<FinalItinerary | null>(null);
 
-  // Callback when AI finishes generating the trip
-  const handleItineraryGenerated = (data: FinalItinerary) => {
+  const handleGenerateItinerary = (data: FinalItinerary) => {
+    console.log("📲 App received REAL data:", data); // Check console to verify
     setTripData(data);
-    setCurrentScreen('dashboard'); // Auto-redirect to dashboard
+    setCurrentScreen('dashboard'); // Auto-navigate to dashboard
   };
 
   const renderScreen = () => {
@@ -27,13 +28,13 @@ function App() {
       case 'home':
         return <LandingPage onNavigate={setCurrentScreen} />;
       case 'chat':
-        return <ChatInterface onGenerateItinerary={handleItineraryGenerated} />;
+        return <ChatInterface onGenerateItinerary={handleGenerateItinerary} />;
       case 'dashboard':
         return <ItineraryDashboard onNavigate={setCurrentScreen} tripData={tripData} />;
       case 'booking':
         return <BookingSimulation onNavigate={setCurrentScreen} tripData={tripData} />;
-      case 'collaborate':
-        return <CollaborativeMode />; // You can pass tripData here too if needed
+      case 'collab':
+        return <CollaborativeMode />;
       case 'profile':
         return <ProfileSettings onNavigate={setCurrentScreen} />;
       default:
@@ -42,13 +43,11 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-white">
+    <div className="min-h-screen bg-white flex flex-col font-sans">
       <Navigation onNavigate={setCurrentScreen} currentScreen={currentScreen} />
-      
       <main className="flex-grow">
         {renderScreen()}
       </main>
-
       <Footer />
     </div>
   );

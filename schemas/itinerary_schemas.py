@@ -26,22 +26,27 @@ class DeconstructedQuery(BaseModel):
         if v is None:
             return v
         try:
+            # Check strictly format YYYY-MM-DD
             datetime.strptime(v, "%Y-%m-%d")
             return v
         except ValueError:
-            return None  # Invalid date becomes null
+            return None  # Invalid date becomes null so main.py can patch it
     
-    @field_validator('budget_usd')
+    @field_validator('budget_usd', mode='before')
     @classmethod
     def validate_budget(cls, v):
-        """Ensure budget is reasonable"""
+        """Ensure budget is reasonable and handle string inputs like '$2000'"""
         if v is None:
             return 0
-        if v < 0:
+        try:
+            # Handle strings like "$2000" or "2,000"
+            clean_v = str(v).replace("$", "").replace(",", "").strip()
+            val = int(float(clean_v))
+            if val < 0: return 0
+            if val > 1000000: return 1000000
+            return val
+        except:
             return 0
-        if v > 1000000:  # Prevent unrealistic budgets
-            return 1000000
-        return v
 
 # ==============================================================================
 # Stage 2: Research & Logistics
@@ -59,40 +64,26 @@ class FlightOption(BaseModel):
     @field_validator('price_usd', mode='before')
     @classmethod
     def parse_int_safely(cls, v):
-        if v is None or v == "":
-            return 0
+        if v is None or v == "": return 0
         try:
-            price = int(float(v))
-            # Validate reasonable price range
-            if price <= 0 or price > 50000:
-                return 0
-            return price
-        except:
-            return 0
+            return int(float(str(v).replace("$", "").replace(",", "")))
+        except: return 0
 
     @field_validator('duration_hours', mode='before')
     @classmethod
     def parse_float_safely(cls, v):
-        if v is None or v == "":
-            return 0.0
+        if v is None or v == "": return 0.0
         try:
-            duration = float(v)
-            if duration <= 0 or duration > 48:  # Reasonable flight duration
-                return 0.0
-            return duration
-        except:
-            return 0.0
+            return float(v)
+        except: return 0.0
     
     @field_validator('stops', mode='before')
     @classmethod
     def parse_stops_safely(cls, v):
-        if v is None or v == "":
-            return 0
+        if v is None or v == "": return 0
         try:
-            stops = int(v)
-            return max(0, min(stops, 5))  # 0-5 stops max
-        except:
-            return 0
+            return int(v)
+        except: return 0
 
 class HotelOption(BaseModel):
     name: str = Field(default="Unknown Hotel")
@@ -106,32 +97,23 @@ class HotelOption(BaseModel):
     @field_validator('price_per_night_usd', mode='before')
     @classmethod
     def parse_int_safely(cls, v):
-        if v is None or v == "":
-            return 0
+        if v is None or v == "": return 0
         try:
-            price = int(float(v))
-            if price <= 0 or price > 10000:
-                return 0
-            return price
-        except:
-            return 0
+            return int(float(str(v).replace("$", "").replace(",", "")))
+        except: return 0
 
     @field_validator('rating', mode='before')
     @classmethod
     def parse_float_safely(cls, v):
-        if v is None or v == "":
-            return 0.0
+        if v is None or v == "": return 0.0
         try:
-            rating = float(v)
-            return max(0.0, min(rating, 10.0))  # 0-10 scale
-        except:
-            return 0.0
+            return float(v)
+        except: return 0.0
     
     @field_validator('summary', mode='before')
     @classmethod
     def parse_string_safely(cls, v):
-        if v is None:
-            return "Details not available"
+        if v is None: return "Details not available"
         return str(v)[:500]  # Limit length
 
 class DestinationAnalysis(BaseModel):
@@ -166,13 +148,10 @@ class Activity(BaseModel):
     @field_validator('estimated_cost_usd', mode='before')
     @classmethod
     def handle_none_cost(cls, v):
-        if v is None or v == "":
-            return 0
+        if v is None or v == "": return 0
         try:
-            cost = int(float(v))
-            return max(0, min(cost, 5000))  # Reasonable activity cost
-        except:
-            return 0
+            return int(float(str(v).replace("$", "").replace(",", "")))
+        except: return 0
 
 class DailyPlan(BaseModel):
     day: int
@@ -185,8 +164,15 @@ class FinalItinerary(BaseModel):
     trip_title: str
     destination: str
     trip_summary: str
+    
+    # Selected Options
     chosen_flight: FlightOption
     chosen_hotel: HotelOption
+    
+    # 🆕 NEW ADDITIONS FOR FRONTEND LISTS
+    all_flights: List[FlightOption] = Field(default_factory=list, description="Full list of flight options found")
+    all_hotels: List[HotelOption] = Field(default_factory=list, description="Full list of hotel options found")
+    
     budget_overview: str
     daily_plans: List[DailyPlan]
     total_estimated_cost: Optional[int] = 0
