@@ -1,6 +1,13 @@
 import { Facebook, Twitter, Instagram, Youtube } from 'lucide-react';
 
 export function Footer() {
+  const socialLinks = {
+    instagram: "https://www.instagram.com/tripplanners_?igsh=aTV2Nm1jbnp4Ng==",
+    twitter: "https://twitter.com/your-app-name",
+    facebook: "https://facebook.com/your-app-name",
+    youtube: "https://youtube.com/your-channel-name",
+  };
+
   return (
     <footer className="bg-gray-900 text-gray-300">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -71,18 +78,34 @@ export function Footer() {
           <div>
             <h3 className="text-white mb-4">Connect With Us</h3>
             <div className="flex space-x-4">
-              <a href="#" className="hover:text-white transition-colors">
+              <button
+                onClick={() => window.open(socialLinks.facebook, '_blank')}
+                className="text-gray-300 hover:text-white transition-colors"
+                title="Follow on Facebook"
+              >
                 <Facebook className="h-5 w-5" />
-              </a>
-              <a href="#" className="hover:text-white transition-colors">
+              </button>
+              <button
+                onClick={() => window.open(socialLinks.twitter, '_blank')}
+                className="text-gray-300 hover:text-white transition-colors"
+                title="Follow on Twitter"
+              >
                 <Twitter className="h-5 w-5" />
-              </a>
-              <a href="#" className="hover:text-white transition-colors">
+              </button>
+              <button
+                onClick={() => window.open(socialLinks.instagram, '_blank')}
+                className="text-gray-300 hover:text-white transition-colors"
+                title="Follow on Instagram"
+              >
                 <Instagram className="h-5 w-5" />
-              </a>
-              <a href="#" className="hover:text-white transition-colors">
+              </button>
+              <button
+                onClick={() => window.open(socialLinks.youtube, '_blank')}
+                className="text-gray-300 hover:text-white transition-colors"
+                title="Subscribe on YouTube"
+              >
                 <Youtube className="h-5 w-5" />
-              </a>
+              </button>
             </div>
           </div>
         </div>

@@ -90,38 +90,55 @@ export function BookingSimulation({ onNavigate, tripData }: BookingSimulationPro
                 <Hotel className="h-5 w-5 text-purple-600" /> Hotel Options
               </h2>
               <div className="space-y-4">
+
                 {hotelList.map((hotel, index) => (
-                  <motion.div key={index} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.1 }}>
-                    <Card className="border-l-4 border-l-purple-500 hover:shadow-md transition-shadow">
-                      <CardContent className="p-6">
-                        <div className="flex justify-between items-start">
-                          <div className="flex-1">
-                            <h3 className="font-bold text-lg text-gray-900">{hotel.name}</h3>
-                            <div className="flex items-center gap-1 my-1">
-                                <Star className="h-4 w-4 text-orange-400 fill-orange-400" />
-                                <span className="text-sm font-medium">{hotel.rating > 0 ? hotel.rating : "N/A"}</span>
-                            </div>
-                            <p className="text-sm text-gray-500 line-clamp-2">{hotel.summary}</p>
-                            <p className="text-xs text-gray-400 mt-1">{hotel.address}</p>
-                          </div>
-                          <div className="text-right ml-4">
-                            <span className="block text-2xl font-bold text-gray-900">
-                                {hotel.price_per_night_usd > 0 ? `$${hotel.price_per_night_usd}` : "Check Price"}
-                                <span className="text-sm font-normal text-gray-500">/night</span>
-                            </span>
-                            <Button 
-                              size="sm" 
-                              className="mt-2 bg-purple-600 hover:bg-purple-700 text-white"
-                              onClick={() => window.open(hotel.booking_url, '_blank')}
-                            >
-                              View Deal <ExternalLink className="ml-1 h-3 w-3" />
-                            </Button>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                ))}
+          <motion.div key={index} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.1 }}>
+            <Card 
+              className="border-l-4 border-l-purple-500 hover:shadow-md transition-shadow cursor-pointer"
+              onClick={() => {
+                if (hotel.booking_url && hotel.booking_url.trim()) {
+                  window.open(hotel.booking_url, '_blank');
+                } else {
+                  alert('Booking URL not available for this hotel.');
+                }
+              }}
+            >
+              <CardContent className="p-6">
+                <div className="flex justify-between items-start">
+                  <div className="flex-1">
+                    <h3 className="font-bold text-lg text-gray-900">{hotel.name}</h3>
+                    <div className="flex items-center gap-1 my-1">
+                        <Star className="h-4 w-4 text-orange-400 fill-orange-400" />
+                        <span className="text-sm font-medium">{hotel.rating > 0 ? hotel.rating : "N/A"}</span>
+                    </div>
+                    <p className="text-sm text-gray-500 line-clamp-2">{hotel.summary}</p>
+                    <p className="text-xs text-gray-400 mt-1">{hotel.address}</p>
+                  </div>
+                  <div className="text-right ml-4">
+                    <span className="block text-2xl font-bold text-gray-900">
+                        {hotel.price_per_night_usd > 0 ? `$${hotel.price_per_night_usd}` : "Check Price"}
+                        <span className="text-sm font-normal text-gray-500">/night</span>
+                    </span>
+                    <Button
+                      size="sm"
+                      className="mt-2 bg-purple-600 hover:bg-purple-700 text-white"
+                      onClick={(e) => {
+                        e.stopPropagation(); // Prevent card click when button is clicked
+                        if (hotel.booking_url && hotel.booking_url.trim()) {
+                          window.open(hotel.booking_url, '_blank');
+                        } else {
+                          alert('Booking URL not available for this hotel.');
+                        }
+                      }}
+                    >
+                      View Deal <ExternalLink className="ml-1 h-3 w-3" />
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        ))}
               </div>
             </div>
 
