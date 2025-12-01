@@ -11,6 +11,7 @@ import { Badge } from './ui/badge';
 import { Separator } from './ui/separator';
 import { FinalItinerary } from '../types';
 import { NotesCard } from './ui/NotesCard';
+import { DestinationImage } from './ui/DestinationImage';
 
 interface ItineraryDashboardProps {
   onNavigate: (screen: string) => void;
@@ -51,51 +52,60 @@ export function ItineraryDashboard({ onNavigate, tripData }: ItineraryDashboardP
 
         {/* HEADER */}
         <div className="mb-8">
-          <Button variant="ghost" onClick={() => onNavigate('home')} className="mb-4 pl-0 hover:bg-transparent hover:text-blue-600">
+          <Button 
+            variant="ghost" 
+            onClick={() => onNavigate('home')} 
+            className="mb-6 pl-0 hover:bg-transparent hover:text-blue-600"
+          >
             <ArrowLeft className="h-4 w-4 mr-2" /> Back to Home
           </Button>
 
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">{tripData.trip_title}</h1>
-              <div className="flex flex-wrap items-center gap-4 text-gray-600">
-                <div className="flex items-center gap-2 bg-white px-3 py-1 rounded-full shadow-sm border border-gray-100">
+          {/* Title & Info */}
+          <div className="flex flex-col lg:flex-row lg:items-start gap-6 mb-6">
+            <div className="flex-1">
+              <h1 className="text-4xl font-bold text-gray-900 mb-4">{tripData.trip_title}</h1>
+              
+              <div className="flex flex-wrap items-center gap-3 mb-6">
+                <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-full shadow-sm border border-gray-100">
                   <MapPin className="h-4 w-4 text-orange-500" />
-                  <span className="font-medium">{tripData.destination}</span>
+                  <span className="font-medium text-gray-700">{tripData.destination}</span>
                 </div>
-                <div className="flex items-center gap-2 bg-white px-3 py-1 rounded-full shadow-sm border border-gray-100">
+                <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-full shadow-sm border border-gray-100">
                   <Calendar className="h-4 w-4 text-blue-500" />
-                  <span>{tripData.daily_plans.length} Days</span>
+                  <span className="text-gray-700">{tripData.daily_plans.length} Days</span>
                 </div>
                 {tripData.total_estimated_cost ? (
-                  <div className="flex items-center gap-2 bg-white px-3 py-1 rounded-full shadow-sm border border-gray-100">
+                  <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-full shadow-sm border border-gray-100">
                     <span className="font-bold text-green-600">Est. ${tripData.total_estimated_cost}</span>
                   </div>
                 ) : null}
               </div>
-            </div>
 
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" className="gap-2 bg-white">
-                <Share2 className="h-4 w-4" /> Share
-              </Button>
-              <Button 
-                className="bg-gradient-to-r from-orange-500 to-pink-500 text-white gap-2 shadow-md hover:shadow-lg border-0" 
-                onClick={() => onNavigate('booking')}
-              >
-                <Sparkles className="h-4 w-4" /> View Flights & Hotels
-              </Button>
+              {/* Action Buttons */}
+              <div className="flex flex-wrap gap-3">
+                <Button variant="outline" className="gap-2 bg-white border-gray-200 hover:bg-gray-50">
+                  <Share2 className="h-4 w-4" /> Share
+                </Button>
+                <Button 
+                  className="bg-gradient-to-r from-orange-500 to-pink-500 text-white gap-2 shadow-md hover:shadow-lg border-0" 
+                  onClick={() => onNavigate('booking')}
+                >
+                  <Sparkles className="h-4 w-4" /> View Flights & Hotels
+                </Button>
+              </div>
             </div>
           </div>
 
-          <div className="mt-6 bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+          {/* Trip Summary */}
+          <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
             <p className="text-gray-600 leading-relaxed">{tripData.trip_summary}</p>
           </div>
         </div>
 
+        {/* MAIN GRID */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
 
-          {/* LEFT COLUMN: ITINERARY */}
+          {/* LEFT COLUMN: Itinerary */}
           <div className="lg:col-span-2 space-y-6">
             {tripData.daily_plans.map((day) => (
               <Card key={day.day} className="overflow-hidden border-0 shadow-sm ring-1 ring-gray-100">
@@ -113,7 +123,11 @@ export function ItineraryDashboard({ onNavigate, tripData }: ItineraryDashboardP
                         <CardTitle className="text-lg text-gray-900">{day.title}</CardTitle>
                       </div>
                     </div>
-                    <ChevronDown className={`h-5 w-5 text-gray-400 transition-transform duration-300 ${expandedDay === day.day ? 'rotate-180' : ''}`} />
+                    <ChevronDown 
+                      className={`h-5 w-5 text-gray-400 transition-transform duration-300 ${
+                        expandedDay === day.day ? 'rotate-180' : ''
+                      }`} 
+                    />
                   </div>
                 </CardHeader>
 
@@ -152,7 +166,9 @@ export function ItineraryDashboard({ onNavigate, tripData }: ItineraryDashboardP
                                   </span>
                                 ) : null}
                               </div>
-                              <p className="text-sm text-gray-600 leading-relaxed">{activity.description}</p>
+                              <p className="text-sm text-gray-600 leading-relaxed">
+                                {activity.description}
+                              </p>
                             </div>
                           </motion.div>
                         );
@@ -164,51 +180,54 @@ export function ItineraryDashboard({ onNavigate, tripData }: ItineraryDashboardP
             ))}
           </div>
 
-          {/* RIGHT COLUMN: INFO */}
+          {/* RIGHT COLUMN: Sidebar */}
           <div className="space-y-6">
+
             {/* Budget Breakdown */}
             <Card className="border-0 shadow-sm ring-1 ring-gray-100">
-              <CardHeader className="bg-gray-900 text-white rounded-t-xl py-4">
+              <CardHeader className="bg-gray-900 text-white rounded-t-lg py-4">
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Users className="h-4 w-4" /> Budget Breakdown
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6">
-                 <p className="text-sm text-gray-600 whitespace-pre-line mb-4">
-                   {tripData.budget_overview || "Calculated based on average costs."}
-                 </p>
-                 <Separator className="my-4"/>
-                 <div className="flex justify-between items-center">
-                    <span className="text-sm font-medium text-gray-500">Total Est.</span>
-                    <span className="text-xl font-bold text-green-600">${tripData.total_estimated_cost || 0}</span>
-                 </div>
+                <p className="text-sm text-gray-600 whitespace-pre-line mb-4">
+                  {tripData.budget_overview || "Calculated based on average costs."}
+                </p>
+                <Separator className="my-4" />
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-gray-500">Total Est.</span>
+                  <span className="text-xl font-bold text-green-600">
+                    ${tripData.total_estimated_cost || 0}
+                  </span>
+                </div>
               </CardContent>
             </Card>
 
-            {/* Travel Tip */}
+            {/* Travel Tip Card with Wikipedia Image */}
             <Card className="border-0 shadow-sm ring-1 ring-gray-100 overflow-hidden">
-               <div className="h-40 bg-gray-200 relative">
-                  <img 
-                    src={`https://source.unsplash.com/800x600/?${encodeURIComponent(tripData.destination)},landmark`}
-                    alt={tripData.destination}
-                    className="absolute inset-0 w-full h-full object-cover"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?auto=format&fit=crop&w=800&q=80';
-                    }}
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                  <div className="absolute bottom-3 left-4 text-white">
-                    <h3 className="text-xl font-bold">{tripData.destination}</h3>
-                  </div>
-               </div>
-               <CardContent className="p-4">
-                 <p className="text-sm text-gray-600">
-                   <strong>Travel Tip:</strong> {tripData.travel_tips || `Pack accordingly for ${tripData.destination}.`}
-                 </p>
-               </CardContent>
+              <div className="relative w-full">
+                {/* Wikipedia/Destination Image - Primary Background */}
+                <div className="w-full">
+                  <DestinationImage destination={tripData?.destination || ''} />
+                </div>
+                
+                {/* Overlay for better text contrast */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent pointer-events-none" />
+
+                {/* Destination Title */}
+                <div className="absolute bottom-3 left-4 text-white z-10">
+                  <h3 className="text-xl font-bold">{tripData?.destination}</h3>
+                </div>
+              </div>
+              <CardContent className="p-4">
+                <p className="text-sm text-gray-600">
+                  <strong>Travel Tip:</strong> {tripData?.travel_tips || `Pack accordingly for ${tripData?.destination}.`}
+                </p>
+              </CardContent>
             </Card>
 
-            {/* Notes Box */}
+            {/* Notes Card */}
             <NotesCard />
           </div>
 

@@ -1,4 +1,3 @@
-# main.py
 import os
 import json
 import asyncio
@@ -138,7 +137,29 @@ class OptimizedTripPlannerCrew:
         end_time = datetime.now()
         print(f"\n🎉 COMPLETE! Time: {(end_time - start_time).total_seconds():.1f}s")
         
-        return final_itinerary.model_dump()
+        # ✅ CRITICAL: Convert to dict BEFORE returning (Pydantic serialization)
+        result_dict = final_itinerary.model_dump()
+        
+        # ✅ Ensure all nested objects are serializable
+        result_dict = self._sanitize_for_json(result_dict)
+        
+        return result_dict
+    
+    # ✅ NEW: Helper to ensure JSON serialization
+    def _sanitize_for_json(self, obj):
+        """Recursively remove non-serializable objects"""
+        if isinstance(obj, dict):
+            return {k: self._sanitize_for_json(v) for k, v in obj.items()}
+        elif isinstance(obj, (list, tuple)):
+            return [self._sanitize_for_json(item) for item in obj]
+        elif isinstance(obj, (str, int, float, bool, type(None))):
+            return obj
+        elif hasattr(obj, '__dict__'):
+            # Convert objects to dict
+            return self._sanitize_for_json(obj.__dict__)
+        else:
+            # Last resort: convert to string
+            return str(obj)
     
     # --- HELPER METHODS ---
     async def _run_stage_1(self, user_query: str) -> DeconstructedQuery:
@@ -170,7 +191,8 @@ class OptimizedTripPlannerCrew:
             s = datetime.strptime(trip_details.start_date, "%Y-%m-%d")
             e = datetime.strptime(trip_details.end_date, "%Y-%m-%d")
             days = (e - s).days + 1
-        except: days = 3
+        except: 
+            days = 3
 
         agent = create_experience_curator_agent(self.curator_llm, days, trip_details.interests)
         task = create_curation_task(agent, trip_details, dest_data, log_data)
@@ -206,38 +228,49 @@ class OptimizedTripPlannerCrew:
         except Exception as e:
             print(f"⚠️ Assembly Failed: {e}. Generating safe fallback.")
             
-            # 🚀 ROBUST FALLBACK (Fixes the validation error)
-            
             # Create Safe Dummy Flight if missing
             safe_flight = log_data.flight_options[0] if log_data.flight_options else FlightOption(
-                airline="Check Online", price_usd=0, duration_hours=0, stops=0, 
-                booking_url="https://www.google.com/flights", departure_time="TBA", arrival_time="TBA"
+                airline="Check Online", 
+                price_usd=0, 
+                duration_hours=0, 
+                stops=0, 
+                booking_url="https://www.google.com/flights", 
+                departure_time="TBA", 
+                arrival_time="TBA"
             )
             
             # Create Safe Dummy Hotel if missing
             safe_hotel = log_data.hotel_options[0] if log_data.hotel_options else HotelOption(
-                name="Check Local Availability", price_per_night_usd=0, rating=0, summary="Details unavailable", 
-                booking_url="https://www.booking.com", address="City Center", amenities=[]
+                name="Check Local Availability", 
+                price_per_night_usd=0, 
+                rating=0, 
+                summary="Details unavailable", 
+                booking_url="https://www.booking.com", 
+                address="City Center", 
+                amenities=[]
             )
 
             return FinalItinerary(
                 trip_title=f"Trip to {dest_data.key_regions[0] if dest_data.key_regions else 'Destination'}",
-                destination="Your Destination",
+                destination=dest_data.key_regions[0] if dest_data.key_regions else "Your Destination",
                 trip_summary="Here is your generated itinerary based on available data.",
                 chosen_flight=safe_flight,
                 chosen_hotel=safe_hotel,
-                all_flights=log_data.flight_options,
-                all_hotels=log_data.hotel_options,
+                all_flights=log_data.flight_options or [],
+                all_hotels=log_data.hotel_options or [],
                 budget_overview="Estimated based on typical costs.",
-                daily_plans=daily_plans,
+                daily_plans=daily_plans or [],
                 total_estimated_cost=0
             )
 
     def _validate_or_raise(self, trip_details):
         missing = []
-        if not trip_details.destination: missing.append("Destination")
-        if not trip_details.start_date: missing.append("Start Date")
-        if missing: raise ValueError(f"VALIDATION: Missing {', '.join(missing)}")
+        if not trip_details.destination: 
+            missing.append("Destination")
+        if not trip_details.start_date: 
+            missing.append("Start Date")
+        if missing: 
+            raise ValueError(f"VALIDATION: Missing {', '.join(missing)}")
             
     def _get_fallback_destination(self, dest):
         return DestinationAnalysis(
@@ -254,4 +287,5 @@ class OptimizedTripPlannerCrew:
 
 if __name__ == "__main__":
     crew = OptimizedTripPlannerCrew()
-    print(json.dumps(crew.run("Trip to Dubai next weekend"), indent=2))
+    result = crew.run("Trip to Dubai next weekend")
+    print(json.dumps(result, indent=2))
