@@ -39,7 +39,7 @@ def get_safe_date(date_str):
 # AMADEUS API HELPER
 # =====================================================
 class AmadeusClient:
-    def __init__(self):
+    def _init_(self):
         self.api_key = os.getenv("AMADEUS_API_KEY")
         self.api_secret = os.getenv("AMADEUS_API_SECRET")
         self.base_url = "https://test.api.amadeus.com" 
