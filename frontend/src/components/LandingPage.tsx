@@ -50,50 +50,75 @@ export function LandingPage({ onNavigate }: LandingPageProps) {
   ];
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-gradient-to-br from-black via-purple-900 to-purple-600">
       {/* Hero Section */}
-      <section className="relative h-[600px] flex items-center justify-center overflow-hidden">
-        {/* Background Image */}
-        <div className="absolute inset-0">
-          <ImageWithFallback
-            src="https://images.unsplash.com/photo-1589395937920-07cce323acba?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx3b3JsZCUyMG1hcCUyMHRyYXZlbHxlbnwxfHx8fDE3NTk5NjMzNjd8MA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral"
-            alt="World Map"
-            className="w-full h-full object-cover"
-          />
-          <div className="absolute inset-0 bg-gradient-to-r from-blue-900/90 to-teal-900/80" />
+      <section className="relative min-h-[700px] flex items-center justify-center overflow-hidden">
+        {/* Gradient Background */}
+        <div className="absolute inset-0 bg-gradient-to-br from-black via-purple-900 to-purple-600" />
+        
+        {/* Decorative Elements */}
+        <div className="absolute inset-0 overflow-hidden">
+          <div className="absolute top-20 right-20 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl" />
+          <div className="absolute bottom-20 left-20 w-96 h-96 bg-blue-500/20 rounded-full blur-3xl" />
         </div>
 
         {/* Hero Content */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8 }}
-          className="relative z-10 text-center px-4 max-w-4xl"
+          transition={{ duration: 1 }}
+          className="relative z-10 text-center px-4 max-w-5xl"
         >
-          <h1 className="text-white mb-6">
-            VoyageAI
-          </h1>
-          <div className="mb-6 inline-flex items-center gap-2 bg-orange-500/20 backdrop-blur-sm px-6 py-3 rounded-full border border-orange-500/50">
-            <Sparkles className="h-5 w-5 text-orange-400" />
-            <span className="text-2xl text-orange-100">AI-Powered Travel Planning</span>
-          </div>
-          <h2 className="text-white mb-6">
-            Dream, Plan, Go!
-          </h2>
-          <p className="text-xl text-blue-100 mb-8 max-w-2xl mx-auto">
-            Tell us your preferences, get a custom itinerary in seconds. Powered by multi-agent AI, 
-            real-time data, and smart optimization.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+          <motion.h1 
+            className="text-7xl font-bold text-white mb-6 tracking-tight"
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.2, duration: 0.8 }}
+          >
+            GRADIENT<br />ABSTRACT DESIGN
+          </motion.h1>
+          
+          <motion.p 
+            className="text-xl text-white/90 mb-4 font-light tracking-wide"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.4, duration: 0.8 }}
+          >
+            Landing Page Template
+          </motion.p>
+          
+          <motion.p 
+            className="text-lg text-white/70 mb-12 max-w-2xl mx-auto leading-relaxed"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.6, duration: 0.8 }}
+          >
+            Plan your perfect journey with AI-powered insights. Tell us your preferences 
+            and get a custom itinerary in seconds with real-time data and smart optimization.
+          </motion.p>
+          
+          <motion.div 
+            className="flex flex-col sm:flex-row gap-4 justify-center items-center"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.8, duration: 0.8 }}
+          >
             <Button
               size="lg"
-              className="bg-orange-500 hover:bg-orange-600 text-white border-0"
+              className="bg-white text-black hover:bg-white/90 border-0 px-8 py-6 text-lg font-semibold rounded-full shadow-2xl hover:shadow-white/20 transition-all"
               onClick={() => onNavigate('chat')}
             >
-              Start Planning
-              <ArrowRight className="ml-2 h-5 w-5" />
+              GET STARTED
             </Button>
-          </div>
+            <Button
+              size="lg"
+              variant="outline"
+              className="bg-transparent text-white border-2 border-white/50 hover:bg-white/10 hover:border-white px-8 py-6 text-lg font-semibold rounded-full transition-all"
+              onClick={() => onNavigate('chat')}
+            >
+              VIEW MORE
+            </Button>
+          </motion.div>
         </motion.div>
       </section>
 

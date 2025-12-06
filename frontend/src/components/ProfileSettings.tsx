@@ -79,11 +79,11 @@ export function ProfileSettings({ onNavigate }: ProfileSettingsProps) {
             <Card>
               <CardContent className="pt-6">
                 <div className="text-center">
-                  <div className="h-24 w-24 rounded-full bg-gradient-to-br from-blue-500 to-teal-500 flex items-center justify-center text-white text-3xl mx-auto mb-4">
-                    JD
+                  <div className="h-24 w-24 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-3xl mx-auto mb-4">
+                    <User className="h-12 w-12" />
                   </div>
-                  <h3 className="text-gray-900 mb-1">John Doe</h3>
-                  <p className="text-sm text-gray-600 mb-4">john.doe@email.com</p>
+                  <h3 className="text-gray-900 mb-1">Guest User</h3>
+                  <p className="text-sm text-gray-600 mb-4">user@email.com</p>
                   <Badge className="bg-orange-500 text-white border-0">
                     <Crown className="h-3 w-3 mr-1" />
                     Free Plan

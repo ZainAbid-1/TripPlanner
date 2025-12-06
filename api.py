@@ -1,5 +1,6 @@
 import uvicorn
 import re
+from typing import Optional
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -58,7 +59,9 @@ async def add_no_cache_headers(request, call_next):
 # =====================================================
 class TripRequest(BaseModel):
     query: str = Field(..., max_length=500, min_length=10)
-    conversation_id: str = Field(None, max_length=100)
+    conversation_id: Optional[str] = Field(None, max_length=100)
+    ask_if_missing: bool = Field(default=True, description="Whether to ask for missing info or auto-fill")
+    additional_answers: Optional[dict] = Field(default=None, description="Answers to previously asked questions")
     
     # Updated to Pydantic V2 style validator
     @field_validator('query')
@@ -127,8 +130,19 @@ async def generate_itinerary(request: Request, trip_request: TripRequest):
         # Get crew instance
         crew = get_crew()
         
-        # Run the optimized async pipeline
-        result = await crew.run_async(trip_request.query)
+        # Run the optimized async pipeline with interactive support
+        result = await crew.run_async(
+            trip_request.query, 
+            ask_if_missing=trip_request.ask_if_missing,
+            additional_answers=trip_request.additional_answers
+        )
+        
+        # Check if we need more information
+        if isinstance(result, dict) and result.get("status") == "needs_more_info":
+            print(f"❓ Requesting more information from user [{query_id}]")
+            result["_request_id"] = query_id
+            result["_request_time"] = request_time
+            return result
         
         print(f"✅ Successfully generated itinerary [{query_id}]")
         
@@ -232,9 +246,9 @@ async def internal_error_handler(request: Request, exc):
 # =====================================================
 
 if __name__ == "__main__":
-    print("🚀 Starting VoyageAI API Server...")
-    print("📍 Listening on http://0.0.0.0:8000")
-    print("📚 Docs available at http://localhost:8000/docs")
+    print("Starting VoyageAI API Server...")
+    print("Listening on http://0.0.0.0:8000")
+    print("Docs available at http://localhost:8000/docs")
     
     uvicorn.run(
         app,

@@ -39,7 +39,7 @@ def get_safe_date(date_str):
 # AMADEUS API HELPER
 # =====================================================
 class AmadeusClient:
-    def _init_(self):
+    def __init__(self):
         self.api_key = os.getenv("AMADEUS_API_KEY")
         self.api_secret = os.getenv("AMADEUS_API_SECRET")
         self.base_url = "https://test.api.amadeus.com" 
@@ -76,7 +76,7 @@ class AmadeusClient:
             return city_name[:3].upper()
         except: return city_name[:3].upper()
     
-    def search_flights(self, origin: str, destination: str, departure_date: str, adults: int = 1) -> Dict:
+    def search_flights(self, origin: str, destination: str, departure_date: str, adults: int = 1, return_date: str = None) -> Dict:
         try:
             token = self.get_access_token()
             if not token: return {"error": "Auth failed"}
@@ -90,8 +90,51 @@ class AmadeusClient:
                 "departureDate": departure_date, "adults": adults, "max": 10, "currencyCode": "USD"
             }
             response = requests.get(search_url, headers=headers, params=params, timeout=30)
-            return response.json() if response.status_code == 200 else {"error": f"API {response.status_code}"}
+            result = response.json() if response.status_code == 200 else {"error": f"API {response.status_code}"}
+            
+            # ✅ ADD IATA CODES TO RESULT FOR FRONTEND
+            if "data" in result:
+                result["origin_iata"] = origin_code
+                result["destination_iata"] = dest_code
+                
+            return result
         except Exception as e: return {"error": str(e)}
+    
+    def search_connecting_flights(self, origin: str, destination: str, departure_date: str, adults: int = 1) -> List[Dict]:
+        """Find connecting flights through major hubs if no direct flights available"""
+        major_hubs = ["DXB", "IST", "DOH", "AUH", "BAH", "CAI"]  # Middle East hubs
+        connecting_options = []
+        
+        try:
+            origin_code = self.get_iata_code(origin)
+            dest_code = self.get_iata_code(destination)
+            
+            for hub in major_hubs:
+                if hub == origin_code or hub == dest_code:
+                    continue
+                    
+                # Check if route via hub exists
+                leg1 = self.search_flights(origin, hub, departure_date, adults)
+                if "data" in leg1 and len(leg1["data"]) > 0:
+                    # Calculate next day for connection
+                    try:
+                        dep_date = datetime.strptime(departure_date, "%Y-%m-%d")
+                        next_day = (dep_date + timedelta(days=1)).strftime("%Y-%m-%d")
+                        leg2 = self.search_flights(hub, destination, next_day, adults)
+                        
+                        if "data" in leg2 and len(leg2["data"]) > 0:
+                            connecting_options.append({
+                                "hub": hub,
+                                "leg1": leg1["data"][0],
+                                "leg2": leg2["data"][0],
+                                "total_price": float(leg1["data"][0]["price"]["total"]) + float(leg2["data"][0]["price"]["total"])
+                            })
+                    except:
+                        continue
+                        
+            return connecting_options
+        except:
+            return []
 
 amadeus_client = AmadeusClient()
 
@@ -108,33 +151,73 @@ class FlightSearchTool(BaseTool):
         origin = query.get('origin')
         destination = query.get('destination')
         raw_date = query.get('start_date')
+        raw_end = query.get('end_date')
         date = get_safe_date(raw_date)
+        end_date = get_safe_date(raw_end)
         travelers = query.get('travelers', 1)
 
+        # Handle "None" string or None/empty origin
+        if origin in [None, "None", "", "null"]:
+            print(f"[Flight] Warning: No origin specified. Cannot search flights without origin.")
+            return {
+                "error": "Origin not specified", 
+                "flight_options": [],
+                "booking_url": f"https://www.google.com/travel/flights?q=Flights+to+{destination}",
+                "source": "Missing Origin"
+            }
+        
         print(f"[Flight] Request: {origin}->{destination} on {date}")
-        if not origin or not destination: return {"error": "Missing params", "flight_options": []}
-
-        # Generic Fallback Link
-        base_link = f"https://www.google.com/travel/flights?q=Flights+from+{origin}+to+{destination}+on+{date}"
+        if not destination: 
+            return {"error": "Missing destination", "flight_options": []}
         
         cache_key = cache._generate_key("flights", origin, destination, date, travelers)
         if cache.get(cache_key): return cache.get(cache_key)
 
+        origin_iata = amadeus_client.get_iata_code(origin)
+        dest_iata = amadeus_client.get_iata_code(destination)
+        
+        # ✅ ACTUAL GOOGLE FLIGHTS URL WITH IATA CODES
+        base_link = f"https://www.google.com/travel/flights?q=Flights%20to%20{dest_iata}%20from%20{origin_iata}%20on%20{date}"
+
         if amadeus_client.api_key:
-            api_result = amadeus_client.search_flights(origin, destination, date, int(travelers) if str(travelers).isdigit() else 1)
+            api_result = amadeus_client.search_flights(origin, destination, date, int(travelers) if str(travelers).isdigit() else 1, end_date)
             
             if "data" in api_result and len(api_result["data"]) > 0:
-                print(f"[DEBUG] Amadeus returned {len(api_result['data'])} flights")
-                flight_options = self._parse_amadeus_response(api_result, origin, destination, date)
-                result = {"flight_options": flight_options, "booking_url": base_link, "source": "Amadeus API"}
+                print(f"[DEBUG] Amadeus returned {len(api_result['data'])} direct flights")
+                flight_options = self._parse_amadeus_response(api_result, origin, destination, date, origin_iata, dest_iata)
+                result = {"flight_options": flight_options, "booking_url": base_link, "source": "Amadeus API - Direct"}
                 cache.set(cache_key, result, ttl_hours=2)
                 return result
+            else:
+                # ✅ NO DIRECT FLIGHTS - TRY CONNECTING
+                print(f"[DEBUG] No direct flights found. Searching for connecting flights...")
+                connecting = amadeus_client.search_connecting_flights(origin, destination, date, int(travelers) if str(travelers).isdigit() else 1)
+                
+                if connecting:
+                    print(f"[DEBUG] Found {len(connecting)} connecting flight options")
+                    flight_options = self._parse_connecting_flights(connecting, origin, destination, date, origin_iata, dest_iata)
+                    result = {"flight_options": flight_options, "booking_url": base_link, "source": "Amadeus API - Connecting"}
+                    cache.set(cache_key, result, ttl_hours=2)
+                    return result
 
         return {"flight_options": [], "booking_url": base_link, "source": "No Data Found"}
     
-    def _parse_amadeus_response(self, data: dict, origin: str, dest: str, date: str) -> List[dict]:
+    def _parse_amadeus_response(self, data: dict, origin: str, dest: str, date: str, origin_iata: str, dest_iata: str) -> List[dict]:
+        """Parse Amadeus response and return only the best 3-4 flight options"""
         flights = []
-        for offer in data.get("data", [])[:10]:
+        all_offers = data.get("data", [])
+        
+        # Sort by price to get best options
+        sorted_offers = sorted(all_offers, key=lambda x: float(x.get("price", {}).get("total", 999999)))
+        
+        # Take only best 3-4 flights (prefer direct flights first)
+        direct_flights = [o for o in sorted_offers if len(o.get("itineraries", [{}])[0].get("segments", [])) == 1]
+        connecting_flights = [o for o in sorted_offers if len(o.get("itineraries", [{}])[0].get("segments", [])) > 1]
+        
+        # Prioritize: 2-3 direct flights + 1-2 connecting flights (total max 4)
+        selected_offers = (direct_flights[:3] + connecting_flights[:1])[:4]
+        
+        for offer in selected_offers:
             try:
                 price = float(offer.get("price", {}).get("total", 0))
                 segments = offer.get("itineraries", [{}])[0].get("segments", [])
@@ -143,19 +226,142 @@ class FlightSearchTool(BaseTool):
                 carrier_code = segments[0].get("carrierCode", "Unknown")
                 airline_name = AIRLINE_MAP.get(carrier_code, f"{carrier_code} Airlines")
                 
-                # 🚀 GOOGLE FLIGHTS DEEP LINK (Specific Airline)
-                # Format: https://www.google.com/travel/flights?q=Emirates+Flights+from+Lahore+to+Madinah+on+2025-12-05
-                query_str = f"{airline_name} Flights from {origin} to {dest} on {date}"
-                specific_url = f"https://www.google.com/travel/flights?q={query_str.replace(' ', '+')}"
+                # ✅ ACTUAL GOOGLE FLIGHTS URL WITH PROPER PARAMETERS
+                # Format: https://www.google.com/travel/flights?q=Flights+to+JED+from+LHE+on+2025-12-20
+                specific_url = f"https://www.google.com/travel/flights?q=Flights+to+{dest_iata}+from+{origin_iata}+on+{date}+{airline_name.replace(' ', '+')}"
+                
+                # Calculate duration
+                try:
+                    dep_time = segments[0].get("departure", {}).get("at", "")
+                    arr_time = segments[-1].get("arrival", {}).get("at", "")
+                    if dep_time and arr_time:
+                        dep_dt = datetime.fromisoformat(dep_time.replace('Z', '+00:00'))
+                        arr_dt = datetime.fromisoformat(arr_time.replace('Z', '+00:00'))
+                        duration = (arr_dt - dep_dt).total_seconds() / 3600
+                    else:
+                        duration = 0.0
+                except:
+                    duration = 0.0
                 
                 flights.append({
-                    "airline": airline_name, "price_usd": int(price),
-                    "duration_hours": 0.0, "stops": len(segments) - 1,
+                    "airline": airline_name, 
+                    "price_usd": int(price),
+                    "duration_hours": round(duration, 1), 
+                    "stops": len(segments) - 1,
                     "booking_url": specific_url,
-                    "departure_time": segments[0].get("departure", {}).get("at", "").split("T")[1][:5],
-                    "arrival_time": segments[-1].get("arrival", {}).get("at", "").split("T")[1][:5]
+                    "departure_time": segments[0].get("departure", {}).get("at", "").split("T")[1][:5] if segments[0].get("departure", {}).get("at") else "N/A",
+                    "arrival_time": segments[-1].get("arrival", {}).get("at", "").split("T")[1][:5] if segments[-1].get("arrival", {}).get("at") else "N/A",
+                    "flight_type": "direct" if len(segments) == 1 else f"{len(segments)-1} stop(s)"
                 })
             except: continue
+        return flights
+    
+    def _parse_connecting_flights(self, connecting_options: List[Dict], origin: str, dest: str, date: str, origin_iata: str, dest_iata: str) -> List[dict]:
+        """Parse connecting flight options and return only best 3-4 options"""
+        flights = []
+        
+        # Sort by total price to get best options
+        sorted_options = sorted(connecting_options, key=lambda x: x.get("total_price", 999999))
+        
+        # Take only best 3-4 connecting flights
+        best_options = sorted_options[:4]
+        
+        print(f"[DEBUG] Parsing {len(best_options)} best connecting flight options")
+        
+        for idx, option in enumerate(best_options):
+            try:
+                hub = option["hub"]
+                leg1 = option["leg1"]
+                leg2 = option["leg2"]
+                total_price = option["total_price"]
+                
+                # Get airline info for both legs
+                segments1 = leg1.get("itineraries", [{}])[0].get("segments", [])
+                segments2 = leg2.get("itineraries", [{}])[0].get("segments", [])
+                
+                if not segments1 or not segments2:
+                    print(f"[DEBUG] Skipping option {idx}: missing segments")
+                    continue
+                
+                # Extract carrier codes and map to airline names
+                carrier1 = segments1[0].get("carrierCode", "Unknown")
+                carrier2 = segments2[0].get("carrierCode", "Unknown")
+                airline1 = AIRLINE_MAP.get(carrier1, f"{carrier1} Airlines")
+                airline2 = AIRLINE_MAP.get(carrier2, f"{carrier2} Airlines")
+                
+                # Get flight numbers
+                flight_num1 = segments1[0].get("number", "")
+                flight_num2 = segments2[0].get("number", "")
+                
+                # Calculate total duration
+                try:
+                    dep1_time = segments1[0].get("departure", {}).get("at", "")
+                    arr2_time = segments2[-1].get("arrival", {}).get("at", "")
+                    
+                    if dep1_time and arr2_time:
+                        dep1_dt = datetime.fromisoformat(dep1_time.replace('Z', '+00:00'))
+                        arr2_dt = datetime.fromisoformat(arr2_time.replace('Z', '+00:00'))
+                        total_duration = (arr2_dt - dep1_dt).total_seconds() / 3600
+                    else:
+                        total_duration = 0.0
+                except:
+                    total_duration = 0.0
+                
+                # Get departure and arrival times
+                dep_time = segments1[0].get("departure", {}).get("at", "").split("T")[1][:5] if segments1[0].get("departure", {}).get("at") else "N/A"
+                arr_time = segments2[-1].get("arrival", {}).get("at", "").split("T")[1][:5] if segments2[-1].get("arrival", {}).get("at") else "N/A"
+                
+                # ✅ ENHANCED GOOGLE FLIGHTS URL FOR MULTI-CITY SEARCH
+                # Format: /travel/flights?q=Flights+from+LAX+to+DXB+to+DEL+on+2025-12-12
+                specific_url = f"https://www.google.com/travel/flights?q=Flights+from+{origin_iata}+to+{hub}+to+{dest_iata}+on+{date}"
+                
+                # Build detailed airline display
+                airline_display = f"{airline1}"
+                if airline1 != airline2:
+                    airline_display = f"{airline1} → {airline2}"
+                airline_display += f" (via {hub})"
+                
+                # Create flight option with detailed segment info
+                flight_option = {
+                    "airline": airline_display,
+                    "price_usd": int(total_price),
+                    "duration_hours": round(total_duration, 1) if total_duration > 0 else 0.0,
+                    "stops": 1,
+                    "booking_url": specific_url,
+                    "departure_time": dep_time,
+                    "arrival_time": arr_time,
+                    "flight_type": f"connecting via {hub}",
+                    "segments": [
+                        {
+                            "leg": 1,
+                            "airline": airline1,
+                            "flight_number": f"{carrier1}{flight_num1}" if flight_num1 else carrier1,
+                            "from": origin_iata,
+                            "to": hub,
+                            "departure": dep_time,
+                            "arrival": segments1[-1].get("arrival", {}).get("at", "").split("T")[1][:5] if segments1[-1].get("arrival", {}).get("at") else "N/A"
+                        },
+                        {
+                            "leg": 2,
+                            "airline": airline2,
+                            "flight_number": f"{carrier2}{flight_num2}" if flight_num2 else carrier2,
+                            "from": hub,
+                            "to": dest_iata,
+                            "departure": segments2[0].get("departure", {}).get("at", "").split("T")[1][:5] if segments2[0].get("departure", {}).get("at") else "N/A",
+                            "arrival": arr_time
+                        }
+                    ]
+                }
+                
+                flights.append(flight_option)
+                
+                print(f"[DEBUG] Connecting flight {idx+1}: {origin_iata}→{hub}→{dest_iata} via {airline_display} - ${total_price}")
+                
+            except Exception as e:
+                print(f"[DEBUG] Error parsing connecting flight {idx}: {e}")
+                continue
+        
+        print(f"[DEBUG] Successfully parsed {len(flights)} connecting flights")
         return flights
 
 # =====================================================
@@ -249,26 +455,74 @@ class HotelSearchTool(BaseTool):
     def _parse_booking_response(self, data: dict, destination_name: str) -> List[dict]:
         hotels = []
         results = data.get("result", [])
+        
+        print(f"[DEBUG] Parsing {len(results)} hotel results from Booking.com API")
+        
         for hotel in results[:6]:
             try:
                 name = hotel.get("hotel_name", "Unknown Hotel")
-                # Fallback to Google Hotels if booking link is messy
-                link = f"https://www.google.com/travel/hotels?q={name.replace(' ', '+')}+{destination_name.replace(' ', '+')}"
+                hotel_id = hotel.get("hotel_id")
                 
+                # Get country code for booking.com URL (2-letter ISO code)
+                country_code = hotel.get("country_code", "xx")
+                if not country_code or len(country_code) != 2:
+                    country_code = "xx"
+                country_code = country_code.lower()
+                
+                # ✅ ACTUAL BOOKING.COM DEEP LINK - ALWAYS USE BOOKING.COM
+                # Format: https://www.booking.com/hotel/{country_code}/{hotel_name_slug}.html
+                if hotel_id:
+                    # Construct proper booking.com URL using hotel ID (most reliable)
+                    # Booking.com accepts /hotel/xx/hotelname.html format
+                    hotel_name_slug = hotel.get("hotel_name_trans", name).lower().replace(" ", "-").replace("'", "")
+                    # Remove special characters to create clean slug
+                    hotel_name_slug = ''.join(c for c in hotel_name_slug if c.isalnum() or c == '-')
+                    # Always use booking.com domain - NEVER use hotel's own website
+                    link = f"https://www.booking.com/hotel/{country_code}/{hotel_name_slug}.html?label=tripplanner&aid=304142"
+                else:
+                    # Fallback to search results on booking.com
+                    link = f"https://www.booking.com/searchresults.html?ss={destination_name.replace(' ', '+')}&aid=304142"
+                
+                # Get pricing
                 price_val = 0
-                if "min_total_price" in hotel: price_val = hotel.get("min_total_price")
-                elif "composite_price_breakdown" in hotel: price_val = hotel["composite_price_breakdown"].get("gross_amount", {}).get("value", 0)
+                if "min_total_price" in hotel: 
+                    price_val = hotel.get("min_total_price")
+                elif "composite_price_breakdown" in hotel: 
+                    price_val = hotel["composite_price_breakdown"].get("gross_amount", {}).get("value", 0)
+                elif "price_breakdown" in hotel:
+                    price_val = hotel["price_breakdown"].get("all_inclusive_price", 0)
+                
+                # Get address
+                address = hotel.get("address", "")
+                if not address:
+                    address = f"{hotel.get('city_trans', destination_name)}"
+                
+                # Get amenities
+                amenities = []
+                if hotel.get("has_free_parking"):
+                    amenities.append("Free Parking")
+                if hotel.get("has_swimming_pool"):
+                    amenities.append("Pool")
+                if hotel.get("is_free_cancellable"):
+                    amenities.append("Free Cancellation")
+                if not amenities:
+                    amenities = ["WiFi", "AC"]
                 
                 hotels.append({
                     "name": name, 
-                    "price_per_night_usd": int(float(price_val)), 
+                    "price_per_night_usd": int(float(price_val)) if price_val > 0 else 0, 
                     "rating": float(hotel.get("review_score", 0) or 0),
-                    "summary": f"Located in {hotel.get('city_trans', destination_name)}.",
-                    "address": hotel.get("address", ""),
-                    "amenities": ["WiFi", "AC"],
+                    "summary": f"Located in {hotel.get('city_trans', destination_name)}. {hotel.get('review_score_word', 'Good')} rating.",
+                    "address": address,
+                    "amenities": amenities[:3],
                     "booking_url": link
                 })
-            except: continue
+                
+                print(f"[DEBUG] Hotel: {name} - ${price_val}/night - {link}")
+            except Exception as e:
+                print(f"[DEBUG] Error parsing hotel: {e}")
+                continue
+        
         return hotels
 
 search_flights = FlightSearchTool()
