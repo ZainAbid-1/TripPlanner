@@ -411,15 +411,60 @@ class OptimizedTripPlannerCrew:
         crew = Crew(agents=[agent], tasks=[task], verbose=True)
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(self.executor, crew.kickoff)
-        return task.output.pydantic
+        
+        dest_output = task.output.pydantic
+        
+        # ✅ DEBUG: Log the attractions found
+        if dest_output and dest_output.attractions:
+            print(f"✅ [DEST] Found {len(dest_output.attractions)} attractions: {dest_output.attractions[:5]}")
+        else:
+            print(f"⚠️ [DEST] No attractions found, using fallback")
+            
+        return dest_output
     
     async def _run_logistics_search(self, trip_details):
+        from tools.booking_tools import search_flights
+        
         agent = create_logistics_agent(self.logistics_llm)
         task = create_logistics_task(agent, trip_details)
         crew = Crew(agents=[agent], tasks=[task], verbose=True)
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(self.executor, crew.kickoff)
-        return task.output.pydantic
+        logistics_output = task.output.pydantic
+        
+        # ✅ CRITICAL FIX: Ensure booking_link_flights is populated
+        # If agent didn't capture the booking URL, get it directly from the tool
+        # This ensures we ALWAYS have the Google Flights URL even when no flights are found
+        if not logistics_output.booking_link_flights and trip_details.origin:
+            try:
+                print("[DEBUG] Manually fetching outbound flight booking URL...")
+                flight_tool_result = search_flights._run({
+                    'origin': trip_details.origin,
+                    'destination': trip_details.destination,
+                    'start_date': trip_details.start_date,
+                    'travelers': trip_details.travelers
+                })
+                if 'booking_url' in flight_tool_result:
+                    # Use the outbound URL as the primary booking link
+                    logistics_output.booking_link_flights = flight_tool_result['booking_url']
+                    print(f"[DEBUG] Set booking_link_flights to: {flight_tool_result['booking_url']}")
+                    
+                    # Also try to get return flight URL if end_date exists
+                    if trip_details.end_date:
+                        print("[DEBUG] Manually fetching return flight booking URL...")
+                        return_result = search_flights._run({
+                            'origin': trip_details.destination,
+                            'destination': trip_details.origin,
+                            'start_date': trip_details.end_date,
+                            'travelers': trip_details.travelers
+                        })
+                        # Store return URL in booking_link_hotels temporarily (we can add a new field later)
+                        if 'booking_url' in return_result and not logistics_output.booking_link_hotels:
+                            print(f"[DEBUG] Return flight URL: {return_result['booking_url']}")
+            except Exception as e:
+                print(f"[DEBUG] Failed to get booking URL: {e}")
+        
+        return logistics_output
     
     async def _run_curation(self, trip_details, dest_data, log_data):
         try:
@@ -429,9 +474,13 @@ class OptimizedTripPlannerCrew:
         except: 
             days = 3
 
+        # ✅ DEBUG: Log what attractions are being passed to curator
+        print(f"📍 [CURATION] Destination: {trip_details.destination}")
+        print(f"📍 [CURATION] Attractions available: {dest_data.attractions[:5] if dest_data.attractions else 'NONE'}")
+        
         agent = create_experience_curator_agent(self.curator_llm, days, trip_details.interests)
         task = create_curation_task(agent, trip_details, dest_data, log_data)
-        crew = Crew(agents=[agent], tasks=[task], verbose=False)
+        crew = Crew(agents=[agent], tasks=[task], verbose=True)
         
         try:
             loop = asyncio.get_event_loop()
@@ -501,13 +550,16 @@ class OptimizedTripPlannerCrew:
         except Exception as e:
             print(f"⚠️ Assembly Failed: {e}. Generating safe fallback.")
             
+            # ✅ Use booking_link_flights from logistics if available (contains Google Flights URL with parameters)
+            fallback_url = log_data.booking_link_flights if hasattr(log_data, 'booking_link_flights') and log_data.booking_link_flights else "https://www.google.com/flights"
+            
             # Create Safe Dummy Flights if missing
             safe_flight = log_data.flight_options[0] if log_data.flight_options else FlightOption(
                 airline="Check Online", 
                 price_usd=0, 
                 duration_hours=0, 
                 stops=0, 
-                booking_url="https://www.google.com/flights", 
+                booking_url=fallback_url,  # ✅ Use the specific Google Flights URL
                 departure_time="TBA", 
                 arrival_time="TBA"
             )
@@ -527,8 +579,8 @@ class OptimizedTripPlannerCrew:
             )
 
             itinerary = FinalItinerary(
-                trip_title=f"Trip to {dest_data.key_regions[0] if dest_data.key_regions else 'Destination'}",
-                destination=dest_data.key_regions[0] if dest_data.key_regions else "Your Destination",
+                trip_title=f"Trip to {trip_details.destination}",
+                destination=trip_details.destination,
                 trip_summary="Here is your generated itinerary based on available data.",
                 chosen_flight=safe_flight,
                 chosen_outbound_flight=safe_outbound,
@@ -604,7 +656,16 @@ class OptimizedTripPlannerCrew:
         return DestinationAnalysis(
             summary=f"Welcome to {dest}. A wonderful place to visit.", 
             weather_forecast="Please check local forecasts.",
-            attractions=["City Center", "Local Museum", "Central Park"]
+            key_regions=[dest, f"{dest} City Center"],
+            attractions=[
+                f"{dest} City Center",
+                f"{dest} Main Square", 
+                f"Historic {dest}",
+                f"{dest} Waterfront",
+                f"Local Markets in {dest}"
+            ],
+            cultural_and_safety_tips="Exercise normal precautions and respect local customs.",
+            local_cuisine=["Local specialties", "Traditional cuisine"]
         )
         
     def _get_fallback_logistics(self):

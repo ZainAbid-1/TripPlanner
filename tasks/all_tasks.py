@@ -62,9 +62,17 @@ def create_destination_task(agent, query_data: DeconstructedQuery) -> Task:
             3. Use Wikipedia for a *brief* overview.
             4. Get safety info.
             
+            **CRITICAL JSON FORMAT REQUIREMENTS:**
+            - Return ONLY valid JSON matching the DestinationAnalysis schema
+            - The "attractions" field MUST be a LIST of attraction names (strings)
+            - Extract attraction names from your web search results
+            - Example: "attractions": ["Al-Balad Historic District", "King Fahd Fountain", "Jeddah Corniche", "Red Sea Mall", "Al Rahmah Mosque"]
+            - DO NOT return explanatory text, bullet points, or markdown
+            - Return raw JSON only
+            
             **OUTPUT**: DestinationAnalysis JSON.
         """),
-        expected_output="A valid DestinationAnalysis JSON object.",
+        expected_output="A valid DestinationAnalysis JSON object with attractions list populated from web search results.",
         agent=agent,
         output_pydantic=DestinationAnalysis
     )
@@ -139,6 +147,8 @@ def create_logistics_task(agent, query_data: DeconstructedQuery) -> Task:
             - return_flight_options: List of 3-4 best return flights from tool (empty if no origin)
             - flight_options: Combined list for backward compatibility (copy of outbound_flight_options)
             - hotel_options: List of hotels from API (all with booking.com URLs)
+            - booking_link_flights: The 'booking_url' field from the flight search tool response (CRITICAL: preserve this even when flight_options is empty)
+            - booking_link_hotels: The booking.com search URL if provided
             - Every booking_url must be EXACTLY what the tool returned (no modifications)
         """),
         expected_output="A valid LogisticsAnalysis JSON with flight/hotel options and booking URLs.",
@@ -185,11 +195,14 @@ def create_curation_task(
             
             **STRICT INSTRUCTIONS:**
             1. Plan {num_days} days for {trip_details.destination} ONLY.
-            2. Use ONLY the attractions listed above - DO NOT add any other attractions.
-            3. DO NOT use your general knowledge about other cities.
-            4. Day 1: Check-in at {hotel_name} in {trip_details.destination}.
-            5. Every activity title MUST reference attractions from the list above.
-            6. If you mention a different city or wrong attractions, the output will be rejected.
+            2. **CRITICAL**: Use ONLY the attractions listed above - DO NOT add any other attractions.
+            3. **CRITICAL**: Each activity title MUST reference a SPECIFIC attraction name from the list above.
+            4. **CRITICAL**: DO NOT use generic descriptions like "General sightseeing" or "Afternoon leisure".
+            5. DO NOT use your general knowledge about other cities.
+            6. Day 1: Check-in at {hotel_name} in {trip_details.destination}.
+            7. Every activity MUST include the actual attraction name in the title (e.g., "Visit Al-Balad Historic District", not "Visit historic area").
+            8. If you mention a different city or wrong attractions, the output will be rejected.
+            9. If no specific attractions are provided, use "{trip_details.destination} City Tour" as activity titles.
             
             **IMPORTANT JSON FORMAT:**
             Your output MUST be a JSON object with this exact structure. 

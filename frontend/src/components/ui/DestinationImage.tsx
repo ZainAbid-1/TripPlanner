@@ -90,17 +90,17 @@ export function DestinationImage({ destination, className = '' }: DestinationIma
           }
         }
 
-        // Method 3: Use Loremflickr as reliable fallback with destination keyword
-        console.log('✗ No Wikimedia image found, using LoremFlickr fallback');
-        const loremFlickrUrl = `https://loremflickr.com/800/600/${encodeURIComponent(destination)}`;
-        setImageUrl(loremFlickrUrl);
+        // Method 3: Use Unsplash as reliable fallback with destination keyword
+        console.log('✗ No Wikimedia image found, using Unsplash fallback');
+        const unsplashUrl = `https://source.unsplash.com/800x600/?${encodeURIComponent(destination)},travel,city`;
+        setImageUrl(unsplashUrl);
         setIsLoading(false);
 
       } catch (err) {
         console.error('Error fetching image:', err);
-        // Fallback to LoremFlickr
-        const loremFlickrUrl = `https://loremflickr.com/800/600/${encodeURIComponent(destination)}`;
-        setImageUrl(loremFlickrUrl);
+        // Fallback to Unsplash
+        const unsplashUrl = `https://source.unsplash.com/800x600/?${encodeURIComponent(destination)},travel,city`;
+        setImageUrl(unsplashUrl);
         setIsLoading(false);
       }
     };
@@ -122,9 +122,9 @@ export function DestinationImage({ destination, className = '' }: DestinationIma
     if (retryCount < 1) {
       console.log('Retrying with different image source...');
       setRetryCount(retryCount + 1);
-      // Use a different LoremFlickr seed
+      // Use a different Unsplash query
       const seed = Math.random();
-      const fallbackUrl = `https://loremflickr.com/800/600/${encodeURIComponent(destination || '')}?random=${seed}`;
+      const fallbackUrl = `https://source.unsplash.com/800x600/?${encodeURIComponent(destination || '')},landmark,architecture,tourism&sig=${seed}`;
       setImageUrl(fallbackUrl);
       setHasError(false);
     } else {
