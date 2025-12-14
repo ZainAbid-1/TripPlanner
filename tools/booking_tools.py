@@ -1,5 +1,6 @@
 import os
 import requests
+import time
 from crewai.tools import BaseTool
 from typing import Dict, List
 from datetime import datetime, timedelta
@@ -42,7 +43,10 @@ class AmadeusClient:
     def __init__(self):
         self.api_key = os.getenv("AMADEUS_API_KEY")
         self.api_secret = os.getenv("AMADEUS_API_SECRET")
-        self.base_url = "https://test.api.amadeus.com" 
+        # ✅ CHANGED: Use production API for real flight data
+        # Test API: https://test.api.amadeus.com (limited mock data)
+        # Production API: https://api.amadeus.com (real flight data)
+        self.base_url = "https://api.amadeus.com" 
         self._token = None
         self._token_expiry = None
 
@@ -102,38 +106,74 @@ class AmadeusClient:
     
     def search_connecting_flights(self, origin: str, destination: str, departure_date: str, adults: int = 1) -> List[Dict]:
         """Find connecting flights through major hubs if no direct flights available"""
-        major_hubs = ["DXB", "IST", "DOH", "AUH", "BAH", "CAI"]  # Middle East hubs
+        major_hubs = ["DXB", "IST", "DOH", "AUH", "CAI"]  # Expanded hub list
         connecting_options = []
+        
+        print(f"[CONNECTING] Searching for connecting flights from {origin} to {destination}")
         
         try:
             origin_code = self.get_iata_code(origin)
             dest_code = self.get_iata_code(destination)
             
+            print(f"[CONNECTING] Using codes: {origin_code} → {dest_code}")
+            
             for hub in major_hubs:
                 if hub == origin_code or hub == dest_code:
                     continue
+                
+                print(f"[CONNECTING] Trying hub: {hub}")
+                    
+                # Add small delay to avoid rate limiting
+                time.sleep(0.5)
                     
                 # Check if route via hub exists
                 leg1 = self.search_flights(origin, hub, departure_date, adults)
+                
                 if "data" in leg1 and len(leg1["data"]) > 0:
-                    # Calculate next day for connection
+                    print(f"[CONNECTING] Found leg1: {origin_code} → {hub} ({len(leg1['data'])} options)")
+                    
+                    # Try same-day connection first, then next day
                     try:
                         dep_date = datetime.strptime(departure_date, "%Y-%m-%d")
-                        next_day = (dep_date + timedelta(days=1)).strftime("%Y-%m-%d")
-                        leg2 = self.search_flights(hub, destination, next_day, adults)
                         
-                        if "data" in leg2 and len(leg2["data"]) > 0:
+                        # Try same-day first
+                        time.sleep(0.5)
+                        leg2_same_day = self.search_flights(hub, destination, departure_date, adults)
+                        
+                        if "data" in leg2_same_day and len(leg2_same_day["data"]) > 0:
+                            print(f"[CONNECTING] Found leg2 (same-day): {hub} → {dest_code} ({len(leg2_same_day['data'])} options)")
                             connecting_options.append({
                                 "hub": hub,
                                 "leg1": leg1["data"][0],
-                                "leg2": leg2["data"][0],
-                                "total_price": float(leg1["data"][0]["price"]["total"]) + float(leg2["data"][0]["price"]["total"])
+                                "leg2": leg2_same_day["data"][0],
+                                "total_price": float(leg1["data"][0]["price"]["total"]) + float(leg2_same_day["data"][0]["price"]["total"])
                             })
-                    except:
+                        else:
+                            # Try next day
+                            next_day = (dep_date + timedelta(days=1)).strftime("%Y-%m-%d")
+                            time.sleep(0.5)
+                            leg2_next_day = self.search_flights(hub, destination, next_day, adults)
+                            
+                            if "data" in leg2_next_day and len(leg2_next_day["data"]) > 0:
+                                print(f"[CONNECTING] Found leg2 (next-day): {hub} → {dest_code} ({len(leg2_next_day['data'])} options)")
+                                connecting_options.append({
+                                    "hub": hub,
+                                    "leg1": leg1["data"][0],
+                                    "leg2": leg2_next_day["data"][0],
+                                    "total_price": float(leg1["data"][0]["price"]["total"]) + float(leg2_next_day["data"][0]["price"]["total"])
+                                })
+                            else:
+                                print(f"[CONNECTING] No leg2 found for hub {hub}")
+                    except Exception as e:
+                        print(f"[CONNECTING] Error checking hub {hub}: {e}")
                         continue
-                        
+                else:
+                    print(f"[CONNECTING] No leg1 found for hub {hub}")
+            
+            print(f"[CONNECTING] Total connecting options found: {len(connecting_options)}")
             return connecting_options
-        except:
+        except Exception as e:
+            print(f"[CONNECTING] Error in search_connecting_flights: {e}")
             return []
 
 amadeus_client = AmadeusClient()
@@ -193,14 +233,28 @@ class FlightSearchTool(BaseTool):
                 print(f"[DEBUG] No direct flights found. Searching for connecting flights...")
                 connecting = amadeus_client.search_connecting_flights(origin, destination, date, int(travelers) if str(travelers).isdigit() else 1)
                 
-                if connecting:
+                if connecting and len(connecting) > 0:
                     print(f"[DEBUG] Found {len(connecting)} connecting flight options")
                     flight_options = self._parse_connecting_flights(connecting, origin, destination, date, origin_iata, dest_iata)
-                    result = {"flight_options": flight_options, "booking_url": base_link, "source": "Amadeus API - Connecting"}
-                    cache.set(cache_key, result, ttl_hours=2)
-                    return result
+                    
+                    if flight_options and len(flight_options) > 0:
+                        result = {"flight_options": flight_options, "booking_url": base_link, "source": "Amadeus API - Connecting"}
+                        cache.set(cache_key, result, ttl_hours=2)
+                        return result
+                    else:
+                        print(f"[DEBUG] Connecting flights found but parsing failed")
+                else:
+                    print(f"[DEBUG] No connecting flights available")
 
-        return {"flight_options": [], "booking_url": base_link, "source": "No Data Found"}
+        # No flights found - return informative message with helpful link
+        print(f"[FLIGHT] ⚠️ No flights available from {origin} to {destination} on {date}")
+        print(f"[FLIGHT] 💡 Check alternatives at: {base_link}")
+        return {
+            "flight_options": [], 
+            "booking_url": base_link, 
+            "source": "API Search Complete - No Results",
+            "message": f"The Amadeus API didn't return flights for {origin} → {destination} on {date}. However, flights may still be available through airlines not in the API database. Please check the booking link (Google Flights) for real-time alternatives and pricing."
+        }
     
     def _parse_amadeus_response(self, data: dict, origin: str, dest: str, date: str, origin_iata: str, dest_iata: str) -> List[dict]:
         """Parse Amadeus response and return only the best 3-4 flight options"""
@@ -403,7 +457,7 @@ class HotelSearchTool(BaseTool):
 
         # 🚀 FALLBACK: Generate generic options pointing to Google Hotels
         if not hotel_options:
-            print(f"[DEBUG] No hotels via API. Using Google Hotels Fallback.")
+            print(f"[HOTEL] ℹ️ No hotels via Booking.com API. Using Google Hotels Fallback.")
             hotel_options = [
                 {
                     "name": f"View Hotels in {destination}",
@@ -424,8 +478,20 @@ class HotelSearchTool(BaseTool):
                     "booking_url": google_hotels_link
                 }
             ]
+            result = {
+                "hotel_options": hotel_options, 
+                "booking_url": google_hotels_link, 
+                "source": "Google Hotels Fallback",
+                "message": f"Booking.com API did not return results. Showing Google Hotels options for {destination}."
+            }
+        else:
+            print(f"[HOTEL] ✅ Found {len(hotel_options)} hotels via Booking.com API")
+            result = {
+                "hotel_options": hotel_options, 
+                "booking_url": google_hotels_link, 
+                "source": "Booking.com API"
+            }
             
-        result = {"hotel_options": hotel_options, "booking_url": google_hotels_link, "source": "Google Hotels Fallback"}
         cache.set(cache_key, result, ttl_hours=4)
         return result
     

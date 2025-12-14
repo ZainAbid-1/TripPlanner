@@ -109,7 +109,7 @@ def health_check():
     }
 
 @app.post("/api/plan-trip")
-@limiter.limit("10/minute")
+@limiter.limit("50/minute")
 async def generate_itinerary(request: Request, trip_request: TripRequest):
     """
     Main endpoint: Generate travel itinerary

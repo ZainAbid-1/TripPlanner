@@ -35,93 +35,91 @@ export function BookingSimulation({ onNavigate, tripData }: BookingSimulationPro
   const hotelList = tripData.all_hotels?.length > 0 ? tripData.all_hotels : [tripData.chosen_hotel];
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
+    <div className="min-h-screen py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <Button variant="ghost" onClick={() => onNavigate('dashboard')} className="mb-4 pl-0 hover:bg-transparent hover:text-blue-600">
+        <Button variant="ghost" onClick={() => onNavigate('dashboard')} className="mb-6 pl-0 hover:bg-white/10 text-slate-200 hover:text-white">
             <ArrowLeft className="h-4 w-4 mr-2" /> Back to Dashboard
         </Button>
 
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Booking Options</h1>
-          <p className="text-gray-600">Real-time options for {tripData.destination}</p>
+        <div className="mb-10">
+          <h1 className="text-5xl font-bold text-white mb-3 text-shadow">Booking Options</h1>
+          <p className="text-xl text-slate-300">Real-time prices for {tripData.destination}</p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-8">
             
-            {/* OUTBOUND FLIGHTS */}
             <div>
-              <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-                <Plane className="h-5 w-5 text-blue-600" /> Outbound Flights
+              <h2 className="text-3xl font-bold gradient-text mb-6 flex items-center gap-3">
+                <Plane className="h-7 w-7 text-blue-400" /> Outbound Flights
               </h2>
-              <div className="space-y-4">
+              <div className="space-y-5">
                 {outboundFlights.map((flight, index) => {
                   const [showSegments, setShowSegments] = useState(false);
                   const hasSegments = flight.segments && flight.segments.length > 0;
                   
                   return (
-                    <motion.div key={index} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.1 }}>
-                      <Card className="border-l-4 border-l-blue-500 hover:shadow-md transition-shadow">
-                        <CardContent className="p-6">
-                          <div className="flex justify-between items-start">
-                            <div className="flex-1">
-                              <h3 className="font-bold text-lg text-gray-900">{flight.airline}</h3>
-                              <p className="text-sm text-gray-500">
-                                  {flight.stops === 0 ? "Non-stop" : `${flight.stops} Stop(s)`} • 
-                                  {flight.duration_hours > 0 ? ` ${flight.duration_hours}h` : ""}
-                                  {flight.flight_type && ` • ${flight.flight_type}`}
-                              </p>
-                              <div className="flex gap-4 mt-2 text-sm text-gray-600">
-                                  <span>Dep: {flight.departure_time || "TBA"}</span>
-                                  <span>Arr: {flight.arrival_time || "TBA"}</span>
-                              </div>
-                              
-                              {hasSegments && (
-                                <button
-                                  onClick={() => setShowSegments(!showSegments)}
-                                  className="mt-2 text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
-                                >
-                                  {showSegments ? '▼' : '▶'} {showSegments ? 'Hide' : 'Show'} Flight Details
-                                </button>
-                              )}
+                    <motion.div key={index} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.1 }} whileHover={{ y: -4 }}>
+                      <div className="card-glass border-l-4 border-l-blue-500 hover:shadow-2xl transition-all p-6">
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <h3 className="font-bold text-xl text-white mb-2">{flight.airline}</h3>
+                            <p className="text-sm text-slate-300 mb-3">
+                                {flight.stops === 0 ? "✈️ Non-stop" : `${flight.stops} Stop(s)`} • 
+                                {flight.duration_hours > 0 ? ` ${flight.duration_hours}h` : ""}
+                                {flight.flight_type && ` • ${flight.flight_type}`}
+                            </p>
+                            <div className="flex gap-6 text-sm text-slate-200">
+                                <span className="font-semibold">🛫 {flight.departure_time || "TBA"}</span>
+                                <span className="font-semibold">🛬 {flight.arrival_time || "TBA"}</span>
                             </div>
-                            <div className="text-right">
-                              <span className="block text-2xl font-bold text-gray-900">
-                                  {flight.price_usd > 0 ? `$${flight.price_usd}` : "Check Price"}
-                              </span>
-                              <Button 
-                                size="sm" 
-                                className="mt-2 bg-orange-500 hover:bg-orange-600 text-white"
-                                onClick={() => window.open(flight.booking_url, '_blank')}
+                            
+                            {hasSegments && (
+                              <button
+                                onClick={() => setShowSegments(!showSegments)}
+                                className="mt-3 text-sm text-purple-400 hover:text-pink-400 font-semibold flex items-center gap-1 transition-colors"
                               >
-                                Book on Google <ExternalLink className="ml-1 h-3 w-3" />
-                              </Button>
-                            </div>
+                                {showSegments ? '▼' : '▶'} {showSegments ? 'Hide' : 'Show'} Flight Details
+                              </button>
+                            )}
                           </div>
+                          <div className="text-right">
+                            <span className="block text-3xl font-bold gradient-text mb-3">
+                                {flight.price_usd > 0 ? `$${flight.price_usd}` : "Check"}
+                            </span>
+                            <Button 
+                              size="sm" 
+                              className="btn-primary px-6"
+                              onClick={() => window.open(flight.booking_url, '_blank')}
+                            >
+                              Book <ExternalLink className="ml-1 h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
                           
                           {hasSegments && showSegments && (
                             <motion.div 
                               initial={{ opacity: 0, height: 0 }}
                               animate={{ opacity: 1, height: 'auto' }}
-                              className="mt-4 pt-4 border-t border-gray-200"
+                              className="mt-6 pt-6 border-t border-white/10"
                             >
-                              <h4 className="text-sm font-semibold text-gray-700 mb-3">Flight Segments</h4>
+                              <h4 className="text-sm font-bold text-slate-200 mb-4">Flight Segments</h4>
                               <div className="space-y-3">
                                 {flight.segments.map((segment, segIdx) => (
-                                  <div key={segIdx} className="flex items-center gap-3 bg-gray-50 p-3 rounded-lg">
-                                    <div className="bg-blue-100 text-blue-700 rounded-full w-8 h-8 flex items-center justify-center text-xs font-bold">
+                                  <div key={segIdx} className="flex items-center gap-3 glass-subtle p-4 rounded-xl">
+                                    <div className="bg-gradient-to-br from-blue-500 to-purple-500 rounded-full w-10 h-10 flex items-center justify-center text-sm font-bold text-white">
                                       {segment.leg}
                                     </div>
                                     <div className="flex-1">
-                                      <div className="flex items-center gap-2 text-sm font-medium text-gray-900">
+                                      <div className="flex items-center gap-2 text-sm font-semibold text-white">
                                         <span className="font-mono">{segment.from}</span>
-                                        <ArrowRight className="h-4 w-4 text-gray-400" />
+                                        <ArrowRight className="h-4 w-4 text-pink-400" />
                                         <span className="font-mono">{segment.to}</span>
                                       </div>
-                                      <div className="text-xs text-gray-600 mt-1">
+                                      <div className="text-xs text-slate-300 mt-1">
                                         {segment.airline} {segment.flight_number && `• ${segment.flight_number}`}
                                       </div>
-                                      <div className="text-xs text-gray-500 mt-1">
+                                      <div className="text-xs text-slate-400 mt-1">
                                         {segment.departure} → {segment.arrival}
                                       </div>
                                     </div>
@@ -130,8 +128,7 @@ export function BookingSimulation({ onNavigate, tripData }: BookingSimulationPro
                               </div>
                             </motion.div>
                           )}
-                        </CardContent>
-                      </Card>
+                      </div>
                     </motion.div>
                   );
                 })}
@@ -194,25 +191,25 @@ export function BookingSimulation({ onNavigate, tripData }: BookingSimulationPro
                             <motion.div 
                               initial={{ opacity: 0, height: 0 }}
                               animate={{ opacity: 1, height: 'auto' }}
-                              className="mt-4 pt-4 border-t border-gray-200"
+                              className="mt-6 pt-6 border-t border-white/10"
                             >
-                              <h4 className="text-sm font-semibold text-gray-700 mb-3">Flight Segments</h4>
+                              <h4 className="text-sm font-bold text-slate-200 mb-4">Flight Segments</h4>
                               <div className="space-y-3">
                                 {flight.segments.map((segment, segIdx) => (
-                                  <div key={segIdx} className="flex items-center gap-3 bg-gray-50 p-3 rounded-lg">
-                                    <div className="bg-blue-100 text-blue-700 rounded-full w-8 h-8 flex items-center justify-center text-xs font-bold">
+                                  <div key={segIdx} className="flex items-center gap-3 glass-subtle p-4 rounded-xl">
+                                    <div className="bg-gradient-to-br from-blue-500 to-purple-500 rounded-full w-10 h-10 flex items-center justify-center text-sm font-bold text-white">
                                       {segment.leg}
                                     </div>
                                     <div className="flex-1">
-                                      <div className="flex items-center gap-2 text-sm font-medium text-gray-900">
+                                      <div className="flex items-center gap-2 text-sm font-semibold text-white">
                                         <span className="font-mono">{segment.from}</span>
-                                        <ArrowRight className="h-4 w-4 text-gray-400" />
+                                        <ArrowRight className="h-4 w-4 text-pink-400" />
                                         <span className="font-mono">{segment.to}</span>
                                       </div>
-                                      <div className="text-xs text-gray-600 mt-1">
+                                      <div className="text-xs text-slate-300 mt-1">
                                         {segment.airline} {segment.flight_number && `• ${segment.flight_number}`}
                                       </div>
-                                      <div className="text-xs text-gray-500 mt-1">
+                                      <div className="text-xs text-slate-400 mt-1">
                                         {segment.departure} → {segment.arrival}
                                       </div>
                                     </div>

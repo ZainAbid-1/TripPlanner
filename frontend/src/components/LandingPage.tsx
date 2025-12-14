@@ -50,132 +50,188 @@ export function LandingPage({ onNavigate }: LandingPageProps) {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-black via-purple-900 to-purple-600">
-      {/* Hero Section */}
-      <section className="relative min-h-[700px] flex items-center justify-center overflow-hidden">
-        {/* Gradient Background */}
-        <div className="absolute inset-0 bg-gradient-to-br from-black via-purple-900 to-purple-600" />
-        
-        {/* Decorative Elements */}
+    <div className="min-h-screen">
+      <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
         <div className="absolute inset-0 overflow-hidden">
-          <div className="absolute top-20 right-20 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl" />
-          <div className="absolute bottom-20 left-20 w-96 h-96 bg-blue-500/20 rounded-full blur-3xl" />
+          <motion.div 
+            className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-500/30 rounded-full blur-[120px]"
+            animate={{
+              scale: [1, 1.2, 1],
+              opacity: [0.3, 0.5, 0.3],
+            }}
+            transition={{
+              duration: 8,
+              repeat: Infinity,
+              ease: "easeInOut"
+            }}
+          />
+          <motion.div 
+            className="absolute bottom-1/4 right-1/4 w-[500px] h-[500px] bg-pink-500/30 rounded-full blur-[120px]"
+            animate={{
+              scale: [1.2, 1, 1.2],
+              opacity: [0.4, 0.6, 0.4],
+            }}
+            transition={{
+              duration: 10,
+              repeat: Infinity,
+              ease: "easeInOut"
+            }}
+          />
+          <motion.div 
+            className="absolute top-1/2 right-1/3 w-80 h-80 bg-cyan-500/20 rounded-full blur-[100px]"
+            animate={{
+              scale: [1, 1.3, 1],
+              x: [0, 50, 0],
+              y: [0, -50, 0],
+            }}
+            transition={{
+              duration: 12,
+              repeat: Infinity,
+              ease: "easeInOut"
+            }}
+          />
         </div>
 
-        {/* Hero Content */}
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 1 }}
-          className="relative z-10 text-center px-4 max-w-5xl"
+          className="relative z-10 text-center px-4 max-w-6xl"
         >
-          <motion.h1 
-            className="text-7xl font-bold text-white mb-6 tracking-tight"
+          <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.2, duration: 0.8 }}
           >
-            GRADIENT<br />ABSTRACT DESIGN
-          </motion.h1>
+            <h1 className="text-7xl md:text-8xl lg:text-9xl font-bold mb-6 tracking-tight leading-none">
+              <span className="gradient-text text-glow">VOYAGE</span>
+              <br />
+              <span className="text-white text-shadow">AI</span>
+            </h1>
+          </motion.div>
           
           <motion.p 
-            className="text-xl text-white/90 mb-4 font-light tracking-wide"
+            className="text-2xl md:text-3xl text-slate-200 mb-4 font-light tracking-wide"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.4, duration: 0.8 }}
           >
-            Landing Page Template
+            Your AI-Powered Journey Begins
           </motion.p>
           
           <motion.p 
-            className="text-lg text-white/70 mb-12 max-w-2xl mx-auto leading-relaxed"
+            className="text-lg md:text-xl text-slate-300 mb-12 max-w-2xl mx-auto leading-relaxed"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.6, duration: 0.8 }}
           >
-            Plan your perfect journey with AI-powered insights. Tell us your preferences 
-            and get a custom itinerary in seconds with real-time data and smart optimization.
+            Experience the future of travel planning with multi-agent AI. 
+            Get personalized itineraries with real-time data in seconds.
           </motion.p>
           
           <motion.div 
-            className="flex flex-col sm:flex-row gap-4 justify-center items-center"
+            className="flex flex-col sm:flex-row gap-6 justify-center items-center"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.8, duration: 0.8 }}
           >
             <Button
               size="lg"
-              className="bg-white text-black hover:bg-white/90 border-0 px-8 py-6 text-lg font-semibold rounded-full shadow-2xl hover:shadow-white/20 transition-all"
+              className="btn-primary text-lg px-10 py-7 group"
               onClick={() => onNavigate('chat')}
             >
-              GET STARTED
+              START PLANNING
+              <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
             </Button>
             <Button
               size="lg"
-              variant="outline"
-              className="bg-transparent text-white border-2 border-white/50 hover:bg-white/10 hover:border-white px-8 py-6 text-lg font-semibold rounded-full transition-all"
+              className="btn-secondary text-lg px-10 py-7"
               onClick={() => onNavigate('chat')}
             >
-              VIEW MORE
+              EXPLORE FEATURES
             </Button>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 1.2, duration: 0.8 }}
+            className="mt-16 flex items-center justify-center gap-2"
+          >
+            <Badge className="glass border-white/20 text-slate-200 px-4 py-1.5">
+              <Sparkles className="h-3 w-3 mr-1 text-purple-400" />
+              AI-Powered
+            </Badge>
+            <Badge className="glass border-white/20 text-slate-200 px-4 py-1.5">
+              Real-time Data
+            </Badge>
+            <Badge className="glass border-white/20 text-slate-200 px-4 py-1.5">
+              Smart Optimization
+            </Badge>
           </motion.div>
         </motion.div>
       </section>
 
-      {/* Features Carousel */}
-      <section className="py-16 bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <section className="py-24 px-4 relative">
+        <div className="max-w-7xl mx-auto">
           <motion.div
             initial={{ opacity: 0 }}
             whileInView={{ opacity: 1 }}
             viewport={{ once: true }}
-            className="text-center mb-12"
+            className="text-center mb-16"
           >
-            <h2 className="text-gray-900 mb-4">Powerful Features</h2>
-            <p className="text-gray-600 max-w-2xl mx-auto">
-              Everything you need to plan the perfect trip, powered by advanced AI technology
+            <h2 className="text-4xl md:text-5xl font-bold gradient-text mb-4">Powerful Features</h2>
+            <p className="text-xl text-slate-300 max-w-2xl mx-auto">
+              Everything you need for the perfect journey
             </p>
           </motion.div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {features.map((feature, index) => (
               <motion.div
                 key={index}
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 30 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ delay: index * 0.1 }}
+                whileHover={{ y: -8, transition: { duration: 0.3 } }}
               >
-                <Card className="h-full hover:shadow-lg transition-shadow border-gray-200">
-                  <CardContent className="p-6">
-                    <div className={`w-12 h-12 rounded-lg bg-gradient-to-br ${feature.color} flex items-center justify-center mb-4`}>
-                      <feature.icon className="h-6 w-6 text-white" />
-                    </div>
-                    <h3 className="text-gray-900 mb-2">{feature.title}</h3>
-                    <p className="text-gray-600">{feature.description}</p>
-                  </CardContent>
-                </Card>
+                <div className="card-glass h-full group hover:glow-purple cursor-pointer">
+                  <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${feature.color} flex items-center justify-center mb-6 shadow-lg group-hover:scale-110 transition-transform`}>
+                    <feature.icon className="h-7 w-7 text-white" />
+                  </div>
+                  <h3 className="text-2xl font-bold text-white mb-3">{feature.title}</h3>
+                  <p className="text-slate-300 leading-relaxed">{feature.description}</p>
+                </div>
               </motion.div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* CTA Section */}
-      <section className="py-16 bg-gradient-to-r from-blue-600 to-teal-600">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-white mb-4">Ready to Start Your Adventure?</h2>
-          <p className="text-xl text-blue-100 mb-8">
-            Join thousands of travelers who plan smarter with AI
-          </p>
-          <Button
-            size="lg"
-            className="bg-orange-500 hover:bg-orange-600 text-white border-0"
-            onClick={() => onNavigate('chat')}
+      <section className="py-24 px-4 relative">
+        <div className="absolute inset-0 bg-gradient-to-r from-purple-900/20 via-pink-900/20 to-purple-900/20" />
+        <div className="max-w-4xl mx-auto text-center relative z-10">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
           >
-            Create Your First Itinerary
-            <ArrowRight className="ml-2 h-5 w-5" />
-          </Button>
+            <h2 className="text-4xl md:text-5xl font-bold text-white mb-6">
+              Ready to Start Your <span className="gradient-text">Adventure</span>?
+            </h2>
+            <p className="text-xl text-slate-300 mb-10">
+              Join thousands of travelers planning smarter with AI
+            </p>
+            <Button
+              size="lg"
+              className="btn-primary text-lg px-12 py-7 group"
+              onClick={() => onNavigate('chat')}
+            >
+              Create Your First Itinerary
+              <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+            </Button>
+          </motion.div>
         </div>
       </section>
     </div>

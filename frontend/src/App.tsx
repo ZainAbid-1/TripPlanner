@@ -43,9 +43,13 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-white flex flex-col font-sans">
+    <div className="min-h-screen flex flex-col font-sans relative overflow-hidden">
+      <div className="fixed inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-900 via-purple-900 to-slate-900 -z-10" />
+      <div className="fixed inset-0 bg-[radial-gradient(ellipse_at_bottom_right,_var(--tw-gradient-stops))] from-pink-900/20 via-transparent to-transparent -z-10" />
+      <div className="fixed inset-0 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-cyan-900/20 via-transparent to-transparent -z-10" />
+      
       <Navigation onNavigate={setCurrentScreen} currentScreen={currentScreen} />
-      <main className="flex-grow">
+      <main className="flex-grow relative z-0">
         {renderScreen()}
       </main>
       <Footer />

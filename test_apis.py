@@ -73,7 +73,7 @@ def test_llm_crewai():
         
     try:
         print(f"   (Using key ending in ...{active_key[-4:]})")
-        llm = LLM(model="gemini/gemini-2.0-flash", api_key=active_key)
+        llm = LLM(model="gemini/gemini-1.5-flash", api_key=active_key)
         response = llm.call("Say Hi")
         
         if response:

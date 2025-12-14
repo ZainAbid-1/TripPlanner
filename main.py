@@ -2,6 +2,7 @@ import os
 import json
 import asyncio
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
@@ -57,16 +58,17 @@ class OptimizedTripPlannerCrew:
     
     def _get_optimized_llm(self, env_var_name: str) -> LLM:
         api_key = os.getenv(env_var_name) or os.getenv("GOOGLE_API_KEY")
-        if not api_key:
-            raise ValueError(f"Missing API Key: Set {env_var_name} or GOOGLE_API_KEY")
+        if not api_key or api_key == "YOUR_NEW_KEY_1" or api_key == "YOUR_NEW_KEY_2" or api_key == "YOUR_NEW_KEY_3" or api_key == "YOUR_NEW_KEY_4":
+            raise ValueError(f"Missing or invalid API Key: Set {env_var_name} or GOOGLE_API_KEY with a valid key from https://aistudio.google.com/apikey")
         
         return LLM(
-            model="gemini/gemini-2.0-flash", 
+            model="gemini/gemini-robotics-er-1.5-preview", 
             api_key=api_key,
             temperature=0.3,
             max_tokens=4000,
             timeout=300, 
-            max_retries=3
+            max_retries=5,
+            rpm=15
         )
     
     def _check_missing_info(self, query_data: DeconstructedQuery) -> dict:
@@ -328,6 +330,9 @@ class OptimizedTripPlannerCrew:
         # --- STAGE 2: RESEARCH ---
         print("\n🚀 [Stage 2/4] Researching destination & logistics (PARALLEL)...")
         
+        # Add small delay to avoid rate limiting
+        await asyncio.sleep(1)
+        
         destination_task = self._run_destination_analysis(trip_details)
         logistics_task = self._run_logistics_search(trip_details)
         
@@ -351,10 +356,17 @@ class OptimizedTripPlannerCrew:
             
         # --- STAGE 3: CURATION ---
         print("\n🎨 [Stage 3/4] Creating your personalized itinerary...")
+        
+        # Add small delay to avoid rate limiting
+        await asyncio.sleep(1)
+        
         daily_plans = await self._run_curation(trip_details, destination_output, logistics_output)
         
         # --- STAGE 4: ASSEMBLY ---
         print("\n📑 [Stage 4/4] Assembling final itinerary...")
+        
+        # Add small delay to avoid rate limiting
+        await asyncio.sleep(1)
         final_itinerary = await self._run_assembly(destination_output, logistics_output, daily_plans, trip_details)
         
         end_time = datetime.now()
@@ -432,7 +444,29 @@ class OptimizedTripPlannerCrew:
                 raw_json = raw_json.split("```")[1].split("```")[0].strip()
                 
             data = json.loads(raw_json)
-            return [DailyPlan(**day) for day in data.get('days', [])]
+            daily_plans = [DailyPlan(**day) for day in data.get('days', [])]
+            
+            # ✅ VALIDATION: Check if activities mention wrong cities/attractions
+            requested_dest = trip_details.destination.lower()
+            wrong_attractions = {
+                'eiffel tower': 'Paris',
+                'louvre': 'Paris',
+                'notre dame': 'Paris',
+                'big ben': 'London',
+                'tower bridge': 'London',
+                'burj khalifa': 'Dubai',
+                'statue of liberty': 'New York'
+            }
+            
+            for day_plan in daily_plans:
+                for activity in day_plan.activities:
+                    activity_title = activity.get('title', '').lower() if isinstance(activity, dict) else getattr(activity, 'title', '').lower()
+                    for wrong_attraction, city in wrong_attractions.items():
+                        if wrong_attraction in activity_title and city.lower() not in requested_dest:
+                            print(f"⚠️ WRONG ATTRACTION DETECTED: '{activity_title}' is from {city}, but user requested {trip_details.destination}")
+                            print(f"🔧 This indicates LLM hallucination. Consider regenerating the itinerary.")
+            
+            return daily_plans
         except Exception as e:
             print(f"⚠️ Curation Failed: {e}. Generating fallback plan.")
             return [DailyPlan(day=1, title="Arrival", activities=[
@@ -448,6 +482,22 @@ class OptimizedTripPlannerCrew:
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(self.executor, crew.kickoff)
             itinerary = result.pydantic
+            
+            # ✅ VALIDATION: Check if destination matches
+            requested_dest = trip_details.destination.lower()
+            itinerary_dest = itinerary.destination.lower()
+            
+            # Check for common wrong cities that might appear
+            wrong_cities = ['paris', 'london', 'dubai', 'tokyo', 'new york', 'rome']
+            for wrong_city in wrong_cities:
+                if wrong_city in itinerary_dest and wrong_city not in requested_dest:
+                    print(f"⚠️ DESTINATION MISMATCH DETECTED: LLM generated '{itinerary.destination}' but user requested '{trip_details.destination}'")
+                    print(f"🔧 Correcting destination to: {trip_details.destination}")
+                    itinerary.destination = trip_details.destination
+                    # Also fix trip_title if it contains wrong city
+                    if wrong_city in itinerary.trip_title.lower():
+                        itinerary.trip_title = f"Trip to {trip_details.destination}"
+                        
         except Exception as e:
             print(f"⚠️ Assembly Failed: {e}. Generating safe fallback.")
             

@@ -133,7 +133,7 @@ class HotelOption(BaseModel):
     @field_validator('booking_url', mode='before')
     @classmethod
     def validate_hotel_url(cls, v):
-        """Ensure booking URL is ALWAYS a booking.com URL, never a hotel website"""
+        """Ensure booking URL is ALWAYS a booking.com or Google Hotels URL, never a hotel website"""
         if v is None or v == "":
             return None
         url_str = str(v).strip()
@@ -146,14 +146,17 @@ class HotelOption(BaseModel):
                 if not url_str.startswith("http"):
                     url_str = "https://" + url_str
         
-        # CRITICAL: Only allow booking.com URLs
-        # Reject hotel websites (like www.avari.com, www.marriott.com, etc.)
+        # Allow booking.com URLs (preferred)
         if url_str.startswith("https://www.booking.com") or url_str.startswith("https://booking.com"):
+            return url_str
+        
+        # Allow Google Hotels URLs as fallback when Booking.com API fails
+        if url_str.startswith("https://www.google.com/travel/hotels"):
             return url_str
         
         # If it's a hotel website or invalid URL, replace with booking.com search
         # Extract hotel name for search if possible
-        print(f"[VALIDATION] Rejected non-booking.com URL: {url_str}")
+        print(f"[VALIDATION] Rejected non-booking.com/google URL: {url_str}")
         return "https://www.booking.com/searchresults.html"
     
     @field_validator('price_per_night_usd', mode='before')

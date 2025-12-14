@@ -172,31 +172,41 @@ def create_curation_task(
         description=dedent(f"""
             Create a detailed {num_days}-day itinerary for {trip_details.destination}.
             
-            **USER INTERESTS**: {interests_str}
-            **AVAILABLE ATTRACTIONS**: {attractions_list}
-            **HOTEL**: {hotel_name}
+            **CRITICAL - READ CAREFULLY:**
+            - THIS TRIP IS FOR: {trip_details.destination}
+            - DO NOT create an itinerary for Paris, London, Dubai, or any other city
+            - DO NOT mention Eiffel Tower, Big Ben, Burj Khalifa, or attractions from other cities
+            - ONLY use attractions specifically listed below for {trip_details.destination}
             
-            **INSTRUCTIONS:**
-            1. Plan {num_days} days.
-            2. Use ONLY the provided attractions.
-            3. Day 1: Check-in at {hotel_name}.
+            **USER INTERESTS**: {interests_str}
+            **AVAILABLE ATTRACTIONS IN {trip_details.destination.upper()}**: 
+            {attractions_list}
+            **HOTEL IN {trip_details.destination}**: {hotel_name}
+            
+            **STRICT INSTRUCTIONS:**
+            1. Plan {num_days} days for {trip_details.destination} ONLY.
+            2. Use ONLY the attractions listed above - DO NOT add any other attractions.
+            3. DO NOT use your general knowledge about other cities.
+            4. Day 1: Check-in at {hotel_name} in {trip_details.destination}.
+            5. Every activity title MUST reference attractions from the list above.
+            6. If you mention a different city or wrong attractions, the output will be rejected.
             
             **IMPORTANT JSON FORMAT:**
             Your output MUST be a JSON object with this exact structure. 
             Do NOT return strings for activities. Return OBJECTS.
             
-            Example:
+            Example for {trip_details.destination}:
             {{
                 "days": [
                     {{
                         "day": 1,
-                        "title": "Arrival",
+                        "title": "Arrival in {trip_details.destination}",
                         "activities": [
                             {{
                                 "time": "10:00",
                                 "type": "Sightseeing",
-                                "title": "Visit Museum",
-                                "description": "Tour the main hall",
+                                "title": "Visit [Attraction from list above]",
+                                "description": "Explore the location in {trip_details.destination}",
                                 "estimated_cost_usd": 20
                             }}
                         ]
@@ -204,9 +214,9 @@ def create_curation_task(
                 ]
             }}
             
-            **OUTPUT**: JSON object with 'days' array.
+            **OUTPUT**: JSON object with 'days' array for {trip_details.destination}.
         """),
-        expected_output="Valid JSON object with 'days' array containing Activity objects.",
+        expected_output="Valid JSON object with 'days' array containing Activity objects for {trip_details.destination} ONLY.",
         agent=agent
     )
 # =====================================================
@@ -228,9 +238,19 @@ def create_assembly_task(
     num_outbound = len(logistics_data.outbound_flight_options or [])
     num_return = len(logistics_data.return_flight_options or [])
     
+    # Get destination name from destination_data for validation
+    destination_name = destination_data.key_regions[0] if destination_data.key_regions else "the destination"
+    
     return Task(
         description=dedent(f"""
-            **CRITICAL INSTRUCTION**: You are assembling the final itinerary. DO NOT CHANGE THE DESTINATION. Follow these rules EXACTLY.
+            **CRITICAL INSTRUCTION**: You are assembling the final itinerary for {destination_name}. DO NOT CHANGE THE DESTINATION. Follow these rules EXACTLY.
+            
+            **DESTINATION VALIDATION:**
+            - THIS ITINERARY IS FOR: {destination_name}
+            - The trip_title MUST mention {destination_name}
+            - The destination field MUST be: {destination_name}
+            - DO NOT use Paris, London, or any other city names
+            - Verify all daily_plans reference {destination_name} attractions
             
             **FLIGHT SELECTION:**
             - Available outbound flights: {num_outbound}
@@ -248,24 +268,26 @@ def create_assembly_task(
             - Copy ALL {num_hotels} hotels to 'all_hotels' list (MUST be identical to logistics data)
             
             **ITINERARY INFORMATION:**
+            - Destination: {destination_name} (DO NOT CHANGE)
             - Trip Duration: {num_days} days
             - Daily Plans: Use ALL {num_days} days from input (DO NOT SKIP ANY)
-            - Key Attractions: {', '.join(attractions)}
+            - Key Attractions in {destination_name}: {', '.join(attractions)}
             
             **STRICT RULES:**
             1. DO NOT modify or filter the flight/hotel lists
             2. DO NOT change destination, dates, or trip details
-            3. Write 1-2 sentence summaries only
+            3. Write 1-2 sentence summaries about {destination_name} only
             4. All field values must come ONLY from the provided data
             5. NEVER add made-up attractions, hotels, or flights
             6. **CRITICAL**: Copy booking_url fields EXACTLY - no modifications
             7. **NEVER** use hotel websites - only booking.com URLs allowed
             8. **NEVER** add localhost or proxy URLs to any booking links
             9. **IMPORTANT**: Select DIFFERENT flights for outbound and return if possible
+            10. **VALIDATION**: Ensure destination field = {destination_name}
             
-            **OUTPUT**: Complete FinalItinerary JSON object. Double-check destination matches input data.
+            **OUTPUT**: Complete FinalItinerary JSON object for {destination_name}. Double-check destination matches input data.
         """),
-        expected_output="A valid FinalItinerary JSON object with all fields populated correctly from input data.",
+        expected_output="A valid FinalItinerary JSON object for {destination_name} with all fields populated correctly from input data.",
         agent=agent,
         output_pydantic=FinalItinerary
     )

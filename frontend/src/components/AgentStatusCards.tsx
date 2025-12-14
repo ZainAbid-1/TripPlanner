@@ -79,21 +79,21 @@ export function AgentStatusCards({ currentStage }: AgentStatusCardsProps) {
   }));
 
   return (
-    <div className="w-full max-w-4xl mx-auto space-y-4 p-4">
+    <div className="w-full max-w-5xl mx-auto space-y-6 p-4">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="text-center mb-6"
+        className="text-center mb-8"
       >
-        <h3 className="text-2xl font-bold text-gray-800 mb-2">
-          🤖 AI Agents Working on Your Trip
+        <h3 className="text-3xl font-bold gradient-text mb-2">
+          AI Agents at Work
         </h3>
-        <p className="text-gray-600">
+        <p className="text-slate-300">
           Our specialized agents are collaborating to create your perfect itinerary
         </p>
       </motion.div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <AnimatePresence>
           {agents.map((agent, index) => (
             <motion.div
@@ -101,119 +101,129 @@ export function AgentStatusCards({ currentStage }: AgentStatusCardsProps) {
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ 
                 opacity: 1, 
-                scale: 1, 
+                scale: agent.status === 'active' ? 1.02 : 1, 
                 y: 0,
                 transition: { delay: index * 0.1 }
               }}
               exit={{ opacity: 0, scale: 0.9 }}
+              className={`
+                card-glass relative overflow-hidden
+                ${agent.status === 'active' ? 'ring-2 ring-purple-500/50 animate-glow-pulse' : ''}
+                ${agent.status === 'completed' ? 'opacity-70' : ''}
+              `}
             >
-              <Card 
-                className={`
-                  relative overflow-hidden transition-all duration-300
-                  ${agent.status === 'active' ? 'ring-2 ring-blue-500 shadow-lg scale-105' : ''}
-                  ${agent.status === 'completed' ? 'opacity-75' : ''}
-                `}
-              >
-                {agent.status === 'active' && (
-                  <motion.div
-                    className={`absolute inset-0 bg-gradient-to-r ${agent.color} opacity-10`}
-                    animate={{ 
-                      opacity: [0.1, 0.2, 0.1],
-                    }}
-                    transition={{ 
-                      duration: 2, 
-                      repeat: Infinity,
-                      ease: "easeInOut"
-                    }}
-                  />
-                )}
+              {agent.status === 'active' && (
+                <motion.div
+                  className={`absolute inset-0 bg-gradient-to-r ${agent.color} opacity-10`}
+                  animate={{ 
+                    opacity: [0.05, 0.15, 0.05],
+                  }}
+                  transition={{ 
+                    duration: 2, 
+                    repeat: Infinity,
+                    ease: "easeInOut"
+                  }}
+                />
+              )}
 
-                <CardContent className="p-4">
-                  <div className="flex items-start gap-4">
-                    <div className={`
-                      relative flex items-center justify-center w-12 h-12 rounded-full
-                      ${agent.status === 'active' ? `bg-gradient-to-r ${agent.color}` : 'bg-gray-200'}
-                      ${agent.status === 'completed' ? 'bg-green-500' : ''}
-                    `}>
-                      {agent.status === 'active' ? (
+              <div className="relative z-10">
+                <div className="flex items-start gap-4">
+                  <div className={`
+                    relative flex items-center justify-center w-16 h-16 rounded-2xl
+                    ${agent.status === 'active' ? `bg-gradient-to-br ${agent.color} shadow-lg` : 'bg-white/5'}
+                    ${agent.status === 'completed' ? 'bg-gradient-to-br from-green-500 to-emerald-500' : ''}
+                  `}>
+                    {agent.status === 'active' ? (
+                      <motion.div
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+                      >
+                        <agent.icon className="h-8 w-8 text-white" />
+                      </motion.div>
+                    ) : agent.status === 'completed' ? (
+                      <CheckCircle2 className="h-8 w-8 text-white" />
+                    ) : (
+                      <agent.icon className="h-8 w-8 text-slate-500" />
+                    )}
+
+                    {agent.status === 'active' && (
+                      <>
                         <motion.div
-                          animate={{ rotate: 360 }}
-                          transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                        >
-                          <agent.icon className="h-6 w-6 text-white" />
-                        </motion.div>
-                      ) : agent.status === 'completed' ? (
-                        <CheckCircle2 className="h-6 w-6 text-white" />
-                      ) : (
-                        <agent.icon className="h-6 w-6 text-gray-500" />
-                      )}
-
-                      {agent.status === 'active' && (
-                        <>
-                          <motion.div
-                            className={`absolute inset-0 rounded-full bg-gradient-to-r ${agent.color}`}
-                            animate={{ 
-                              scale: [1, 1.3, 1],
-                              opacity: [0.5, 0, 0.5]
-                            }}
-                            transition={{ 
-                              duration: 1.5, 
-                              repeat: Infinity,
-                              ease: "easeOut"
-                            }}
-                          />
-                        </>
-                      )}
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h4 className="font-semibold text-gray-800 truncate">
-                          {agent.name}
-                        </h4>
-                        {agent.status === 'active' && (
-                          <Loader2 className="h-4 w-4 text-blue-600 animate-spin flex-shrink-0" />
-                        )}
-                        {agent.status === 'completed' && (
-                          <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0" />
-                        )}
-                      </div>
-                      
-                      <p className="text-xs text-gray-500 font-medium mb-2">
-                        {agent.role}
-                      </p>
-                      
-                      <p className={`
-                        text-sm transition-colors duration-300
-                        ${agent.status === 'active' ? 'text-gray-700 font-medium' : 'text-gray-500'}
-                      `}>
-                        {agent.status === 'completed' ? '✅ Complete!' : agent.caption}
-                      </p>
-
-                      {agent.status === 'active' && (
-                        <motion.div 
-                          className="mt-2 h-1 bg-gray-200 rounded-full overflow-hidden"
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                        >
-                          <motion.div
-                            className={`h-full bg-gradient-to-r ${agent.color}`}
-                            animate={{ 
-                              x: ['-100%', '100%']
-                            }}
-                            transition={{ 
-                              duration: 1.5, 
-                              repeat: Infinity,
-                              ease: "easeInOut"
-                            }}
-                            style={{ width: '50%' }}
-                          />
-                        </motion.div>
-                      )}
-                    </div>
+                          className={`absolute inset-0 rounded-2xl bg-gradient-to-r ${agent.color}`}
+                          animate={{ 
+                            scale: [1, 1.4, 1],
+                            opacity: [0.6, 0, 0.6]
+                          }}
+                          transition={{ 
+                            duration: 2, 
+                            repeat: Infinity,
+                            ease: "easeOut"
+                          }}
+                        />
+                        <motion.div
+                          className={`absolute inset-0 rounded-2xl bg-gradient-to-r ${agent.color}`}
+                          animate={{ 
+                            scale: [1, 1.6, 1],
+                            opacity: [0.4, 0, 0.4]
+                          }}
+                          transition={{ 
+                            duration: 2.5, 
+                            repeat: Infinity,
+                            ease: "easeOut",
+                            delay: 0.3
+                          }}
+                        />
+                      </>
+                    )}
                   </div>
-                </CardContent>
-              </Card>
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-2">
+                      <h4 className="font-bold text-white truncate text-lg">
+                        {agent.name}
+                      </h4>
+                      {agent.status === 'active' && (
+                        <Loader2 className="h-5 w-5 text-purple-400 animate-spin flex-shrink-0" />
+                      )}
+                      {agent.status === 'completed' && (
+                        <CheckCircle2 className="h-5 w-5 text-green-400 flex-shrink-0" />
+                      )}
+                    </div>
+                    
+                    <p className="text-xs text-slate-400 font-semibold mb-3 uppercase tracking-wider">
+                      {agent.role}
+                    </p>
+                    
+                    <p className={`
+                      text-sm transition-colors duration-300
+                      ${agent.status === 'active' ? 'text-slate-200 font-medium' : 'text-slate-400'}
+                    `}>
+                      {agent.status === 'completed' ? '✨ Complete!' : agent.caption}
+                    </p>
+
+                    {agent.status === 'active' && (
+                      <motion.div 
+                        className="mt-3 h-1.5 bg-white/10 rounded-full overflow-hidden"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                      >
+                        <motion.div
+                          className={`h-full bg-gradient-to-r ${agent.color} rounded-full`}
+                          animate={{ 
+                            x: ['-100%', '100%']
+                          }}
+                          transition={{ 
+                            duration: 1.5, 
+                            repeat: Infinity,
+                            ease: "easeInOut"
+                          }}
+                          style={{ width: '50%' }}
+                        />
+                      </motion.div>
+                    )}
+                  </div>
+                </div>
+              </div>
             </motion.div>
           ))}
         </AnimatePresence>
@@ -223,11 +233,11 @@ export function AgentStatusCards({ currentStage }: AgentStatusCardsProps) {
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="text-center mt-6"
+          className="text-center mt-8"
         >
-          <div className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-full shadow-lg">
-            <CheckCircle2 className="h-5 w-5" />
-            <span className="font-semibold">Your Itinerary is Ready! 🎉</span>
+          <div className="inline-flex items-center gap-3 px-8 py-4 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-2xl shadow-2xl shadow-green-500/30">
+            <CheckCircle2 className="h-6 w-6" />
+            <span className="font-bold text-lg">Your Itinerary is Ready! 🎉</span>
           </div>
         </motion.div>
       )}

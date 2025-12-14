@@ -9,8 +9,8 @@ from tools.booking_tools import search_flights, search_hotels
 def create_lead_planner_agent(llm):
     return Agent(
         role="Lead Travel Planner",
-        goal="Parse user trip requests into precise, structured data.",
-        backstory="Expert planner who extracts key details and NEVER makes assumptions.",
+        goal="Parse user trip requests into precise, structured data and assemble final itineraries.",
+        backstory="Expert planner who extracts key details and NEVER makes assumptions. When assembling itineraries, you use ONLY the data provided to you and NEVER change the destination or add attractions not in the provided list. You are extremely careful to preserve the exact destination requested by the user.",
         tools=[],
         verbose=False,
         allow_delegation=False,
@@ -55,7 +55,7 @@ def create_experience_curator_agent(llm, trip_duration_days: int, interests: lis
     return Agent(
         role="Travel Experience Curator",
         goal=f"Create a {trip_duration_days}-day itinerary for interests: {interests_str}.",
-        backstory="You transform data into day-by-day plans. You DO NOT search for new info.",
+        backstory="You transform data into day-by-day plans. You ONLY use attractions provided to you. You DO NOT search for new info. You NEVER use your general knowledge about cities - you ONLY use the specific attractions list given to you. If given Riyadh attractions, you create a Riyadh itinerary. If given Tokyo attractions, you create a Tokyo itinerary. You NEVER mix cities or add attractions not in the provided list.",
         tools=[],
         verbose=False,
         allow_delegation=False,
