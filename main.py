@@ -95,23 +95,13 @@ class OptimizedTripPlannerCrew:
                 "hint": "City name (e.g., Lahore, London, New York)"
             }
         
-        # Check budget (IMPORTANT - should ask, don't assume)
-        if not query_data.budget_usd or query_data.budget_usd < 100:
-            missing["budget_usd"] = {
-                "question": "What is your total budget for this trip in USD?",
-                "type": "number",
-                "required": True,
-                "priority": 3,
-                "hint": "Enter amount in USD (e.g., 1000, 2500, 5000)"
-            }
-        
         # Check dates (IMPORTANT - need to know when user wants to travel)
         if not query_data.start_date or query_data.start_date.strip() == "":
             missing["start_date"] = {
                 "question": "When do you want to start your trip?",
                 "type": "text",
                 "required": True,
-                "priority": 4,
+                "priority": 3,
                 "hint": "e.g., 'next weekend', '2025-12-20', 'in 2 weeks'"
             }
         
@@ -121,7 +111,7 @@ class OptimizedTripPlannerCrew:
                 "question": "How many days will you be staying?",
                 "type": "number",
                 "required": True,
-                "priority": 5,
+                "priority": 4,
                 "hint": "Enter number of days (e.g., 3, 5, 7)"
             }
         
@@ -131,7 +121,7 @@ class OptimizedTripPlannerCrew:
                 "question": "How many people are traveling?",
                 "type": "number",
                 "required": True,
-                "priority": 6,
+                "priority": 5,
                 "hint": "Enter number of travelers (e.g., 1, 2, 4)"
             }
         
@@ -162,9 +152,6 @@ class OptimizedTripPlannerCrew:
                 end = start + timedelta(days=3)
                 query_data.end_date = end.strftime("%Y-%m-%d")
             except: pass
-        
-        if not query_data.budget_usd or query_data.budget_usd < 100:
-            query_data.budget_usd = 2000
         
         if not query_data.travelers:
             query_data.travelers = "1"
@@ -213,13 +200,6 @@ class OptimizedTripPlannerCrew:
                     print(f"✅ Calculated end_date from duration: {days} days → {query_data.end_date}")
             except Exception as e:
                 print(f"⚠️ Failed to parse duration: {e}")
-                pass
-        
-        if "budget_usd" in answers and answers["budget_usd"]:
-            try:
-                budget_val = str(answers["budget_usd"]).replace("$", "").replace(",", "").strip()
-                query_data.budget_usd = int(float(budget_val))
-            except:
                 pass
         
         if "travelers" in answers and answers["travelers"]:
@@ -442,6 +422,7 @@ class OptimizedTripPlannerCrew:
                     'origin': trip_details.origin,
                     'destination': trip_details.destination,
                     'start_date': trip_details.start_date,
+                    'end_date': trip_details.end_date,
                     'travelers': trip_details.travelers
                 })
                 if 'booking_url' in flight_tool_result:
@@ -524,7 +505,7 @@ class OptimizedTripPlannerCrew:
             
     async def _run_assembly(self, dest_data, log_data, daily_plans, trip_details):
         agent = create_lead_planner_agent(self.planner_llm)
-        task = create_assembly_task(agent, dest_data, log_data, daily_plans)
+        task = create_assembly_task(agent, dest_data, log_data, daily_plans, trip_details)
         crew = Crew(agents=[agent], tasks=[task], verbose=False)
         
         try:
@@ -546,6 +527,14 @@ class OptimizedTripPlannerCrew:
                     # Also fix trip_title if it contains wrong city
                     if wrong_city in itinerary.trip_title.lower():
                         itinerary.trip_title = f"Trip to {trip_details.destination}"
+            
+            # ✅ Ensure trip metadata is populated
+            if not itinerary.origin:
+                itinerary.origin = trip_details.origin
+            if not itinerary.start_date:
+                itinerary.start_date = trip_details.start_date
+            if not itinerary.end_date:
+                itinerary.end_date = trip_details.end_date
                         
         except Exception as e:
             print(f"⚠️ Assembly Failed: {e}. Generating safe fallback.")
@@ -555,7 +544,7 @@ class OptimizedTripPlannerCrew:
             
             # Create Safe Dummy Flights if missing
             safe_flight = log_data.flight_options[0] if log_data.flight_options else FlightOption(
-                airline="Check Online", 
+                airline="Check for cheapest prices on Google here", 
                 price_usd=0, 
                 duration_hours=0, 
                 stops=0, 
@@ -568,19 +557,27 @@ class OptimizedTripPlannerCrew:
             safe_return = log_data.return_flight_options[0] if log_data.return_flight_options else safe_flight
             
             # Create Safe Dummy Hotel if missing
-            safe_hotel = log_data.hotel_options[0] if log_data.hotel_options else HotelOption(
-                name="Check Local Availability", 
-                price_per_night_usd=0, 
-                rating=0, 
-                summary="Details unavailable", 
-                booking_url="https://www.booking.com", 
-                address="City Center", 
-                amenities=[]
-            )
+            if log_data.hotel_options:
+                safe_hotel = log_data.hotel_options[0]
+            else:
+                # Generate Google Hotels URL for the destination with check-in and check-out dates
+                google_hotels_url = f"https://www.google.com/travel/hotels?q=hotels+in+{trip_details.destination.replace(' ', '+')}&checkin={trip_details.start_date}&checkout={trip_details.end_date}"
+                safe_hotel = HotelOption(
+                    name=f"View top rated hotels in {trip_details.destination}", 
+                    price_per_night_usd=0, 
+                    rating=0, 
+                    summary="Check live prices and availability for top-rated hotels on Google Hotels.", 
+                    booking_url=google_hotels_url, 
+                    address="City Center", 
+                    amenities=[]
+                )
 
             itinerary = FinalItinerary(
                 trip_title=f"Trip to {trip_details.destination}",
                 destination=trip_details.destination,
+                origin=trip_details.origin,
+                start_date=trip_details.start_date,
+                end_date=trip_details.end_date,
                 trip_summary="Here is your generated itinerary based on available data.",
                 chosen_flight=safe_flight,
                 chosen_outbound_flight=safe_outbound,
@@ -597,7 +594,18 @@ class OptimizedTripPlannerCrew:
         
         # ✅ BUDGET ANALYSIS
         try:
-            flight_cost = itinerary.chosen_flight.price_usd if itinerary.chosen_flight else 0
+            # Estimate average round-trip flight cost if not available
+            actual_flight_cost = itinerary.chosen_flight.price_usd if itinerary.chosen_flight and itinerary.chosen_flight.price_usd > 0 else 0
+            
+            # If no actual flight cost, estimate based on typical costs
+            if actual_flight_cost == 0:
+                # Estimate average round-trip flight cost (conservative estimate)
+                estimated_flight_cost = 500  # Base international/domestic estimate
+                # You can enhance this with distance-based estimates if needed
+            else:
+                estimated_flight_cost = actual_flight_cost
+            
+            flight_cost = estimated_flight_cost
             hotel_per_night = itinerary.chosen_hotel.price_per_night_usd if itinerary.chosen_hotel else 0
             trip_duration = len(daily_plans)
             hotel_total = hotel_per_night * trip_duration
@@ -612,30 +620,53 @@ class OptimizedTripPlannerCrew:
                         elif hasattr(activity, 'estimated_cost_usd'):
                             activities_cost += activity.estimated_cost_usd
             
-            # Perform budget analysis
-            budget_analysis = BudgetAnalyzer.analyze_budget(
-                user_budget=trip_details.budget_usd,
-                trip_duration_days=trip_duration,
-                flight_cost=flight_cost,
-                hotel_cost=hotel_total,
-                activities_cost=activities_cost
-            )
+            # Check if user provided a budget
+            user_provided_budget = trip_details.budget_usd and trip_details.budget_usd >= 100
             
-            # Update budget_overview with analysis
-            budget_message = BudgetAnalyzer.get_budget_message_for_itinerary(budget_analysis)
-            recommendations_text = "\n".join(budget_analysis["recommendations"][:3])
-            
-            itinerary.budget_overview = f"{budget_message}\n\n**Budget Breakdown:**\n" \
-                                       f"- Flights: ${flight_cost:,.0f}\n" \
-                                       f"- Accommodation: ${hotel_total:,.0f}\n" \
-                                       f"- Activities: ${activities_cost:,.0f}\n" \
-                                       f"- Daily Expenses Budget: ${budget_analysis['daily_remaining']:,.0f}/day\n\n" \
-                                       f"**Recommendations:**\n{recommendations_text}"
+            if user_provided_budget:
+                # User provided budget - show full analysis with recommendations
+                budget_analysis = BudgetAnalyzer.analyze_budget(
+                    user_budget=trip_details.budget_usd,
+                    trip_duration_days=trip_duration,
+                    flight_cost=flight_cost,
+                    hotel_cost=hotel_total,
+                    activities_cost=activities_cost
+                )
+                
+                # Update budget_overview with analysis and recommendations
+                budget_message = BudgetAnalyzer.get_budget_message_for_itinerary(budget_analysis)
+                recommendations_text = "\n".join(budget_analysis["recommendations"][:3])
+                
+                itinerary.budget_overview = f"{budget_message}\n\n**Budget Breakdown:**\n" \
+                                           f"- Flights: ${flight_cost:,.0f}\n" \
+                                           f"- Accommodation: ${hotel_total:,.0f}\n" \
+                                           f"- Activities: ${activities_cost:,.0f}\n" \
+                                           f"- Daily Expenses Budget: ${budget_analysis['daily_remaining']:,.0f}/day\n\n" \
+                                           f"**Recommendations:**\n{recommendations_text}"
+                
+                print(f"💰 Budget Analysis: {budget_analysis['tier_label']} ({budget_analysis['utilization_percent']}% utilization)")
+            else:
+                # No budget provided - show only cost estimates
+                estimated_daily_expenses = 150  # Average daily expenses estimate
+                total_daily_expenses = estimated_daily_expenses * trip_duration
+                total_estimated = flight_cost + hotel_total + activities_cost + total_daily_expenses
+                
+                itinerary.budget_overview = f"**Estimated Cost Breakdown for {trip_duration}-Day Trip:**\n\n" \
+                                           f"- **Flights**: ${flight_cost:,.0f}\n" \
+                                           f"- **Accommodation**: ${hotel_total:,.0f}\n" \
+                                           f"- **Activities**: ${activities_cost:,.0f}\n" \
+                                           f"- **Daily Expenses** (food, transport, misc): ${estimated_daily_expenses:,.0f}/day × {trip_duration} days = ${total_daily_expenses:,.0f}\n\n" \
+                                           f"**Total Estimated Cost**: ${total_estimated:,.0f}\n\n" \
+                                           f"💡 This is an estimated cost to help you plan your budget. Actual costs may vary based on your preferences and travel style."
+                
+                print(f"💰 Estimated Total Cost: ${total_estimated:,.0f} (no user budget provided)")
+                total_estimated = int(total_estimated)
             
             # Update total cost
-            itinerary.total_estimated_cost = int(budget_analysis['breakdown']['total'])
-            
-            print(f"💰 Budget Analysis: {budget_analysis['tier_label']} ({budget_analysis['utilization_percent']}% utilization)")
+            if user_provided_budget:
+                itinerary.total_estimated_cost = int(budget_analysis['breakdown']['total'])
+            else:
+                itinerary.total_estimated_cost = total_estimated
             
         except Exception as budget_error:
             print(f"⚠️ Budget analysis failed: {budget_error}")

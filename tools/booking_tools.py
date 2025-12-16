@@ -216,45 +216,33 @@ class FlightSearchTool(BaseTool):
         origin_iata = amadeus_client.get_iata_code(origin)
         dest_iata = amadeus_client.get_iata_code(destination)
         
+        print(f"[FLIGHT URL] Origin: {origin} -> IATA: {origin_iata}")
+        print(f"[FLIGHT URL] Destination: {destination} -> IATA: {dest_iata}")
+        print(f"[FLIGHT URL] Dates: start={date}, end={end_date}")
+        
         # ✅ ACTUAL GOOGLE FLIGHTS URL WITH IATA CODES
-        base_link = f"https://www.google.com/travel/flights?q=Flights%20to%20{dest_iata}%20from%20{origin_iata}%20on%20{date}"
+        # Build round-trip URL if end_date is provided and different from start_date
+        if end_date and end_date != date and end_date.lower() not in ["none", ""]:
+            base_link = f"https://www.google.com/travel/flights?q=Flights%20to%20{dest_iata}%20from%20{origin_iata}%20on%20{date}%20return%20{end_date}"
+            print(f"[FLIGHT URL] Round-trip URL generated")
+        else:
+            base_link = f"https://www.google.com/travel/flights?q=Flights%20to%20{dest_iata}%20from%20{origin_iata}%20on%20{date}"
+            print(f"[FLIGHT URL] One-way URL generated")
+        
+        print(f"[FLIGHT URL] Generated URL: {base_link}")
 
-        if amadeus_client.api_key:
-            api_result = amadeus_client.search_flights(origin, destination, date, int(travelers) if str(travelers).isdigit() else 1, end_date)
-            
-            if "data" in api_result and len(api_result["data"]) > 0:
-                print(f"[DEBUG] Amadeus returned {len(api_result['data'])} direct flights")
-                flight_options = self._parse_amadeus_response(api_result, origin, destination, date, origin_iata, dest_iata)
-                result = {"flight_options": flight_options, "booking_url": base_link, "source": "Amadeus API - Direct"}
-                cache.set(cache_key, result, ttl_hours=2)
-                return result
-            else:
-                # ✅ NO DIRECT FLIGHTS - TRY CONNECTING
-                print(f"[DEBUG] No direct flights found. Searching for connecting flights...")
-                connecting = amadeus_client.search_connecting_flights(origin, destination, date, int(travelers) if str(travelers).isdigit() else 1)
-                
-                if connecting and len(connecting) > 0:
-                    print(f"[DEBUG] Found {len(connecting)} connecting flight options")
-                    flight_options = self._parse_connecting_flights(connecting, origin, destination, date, origin_iata, dest_iata)
-                    
-                    if flight_options and len(flight_options) > 0:
-                        result = {"flight_options": flight_options, "booking_url": base_link, "source": "Amadeus API - Connecting"}
-                        cache.set(cache_key, result, ttl_hours=2)
-                        return result
-                    else:
-                        print(f"[DEBUG] Connecting flights found but parsing failed")
-                else:
-                    print(f"[DEBUG] No connecting flights available")
-
-        # No flights found - return informative message with helpful link
-        print(f"[FLIGHT] ⚠️ No flights available from {origin} to {destination} on {date}")
-        print(f"[FLIGHT] 💡 Check alternatives at: {base_link}")
-        return {
+        # ✅ SKIP AMADEUS - GO DIRECTLY TO GOOGLE FLIGHTS
+        # Amadeus API is unreliable and often returns no results
+        # Google Flights provides real-time data from all airlines
+        print(f"[FLIGHT] → Directing to Google Flights for live search: {origin} → {destination} ({date} - {end_date if end_date else 'one-way'})")
+        result = {
             "flight_options": [], 
             "booking_url": base_link, 
-            "source": "API Search Complete - No Results",
-            "message": f"The Amadeus API didn't return flights for {origin} → {destination} on {date}. However, flights may still be available through airlines not in the API database. Please check the booking link (Google Flights) for real-time alternatives and pricing."
+            "source": "Google Flights - Live Search",
+            "message": f"Here are the cheapest flights from {origin} to {destination} on {date}."
         }
+        cache.set(cache_key, result, ttl_hours=2)
+        return result
     
     def _parse_amadeus_response(self, data: dict, origin: str, dest: str, date: str, origin_iata: str, dest_iata: str) -> List[dict]:
         """Parse Amadeus response and return only the best 3-4 flight options"""
@@ -430,15 +418,21 @@ class HotelSearchTool(BaseTool):
         
         destination = query.get('destination')
         raw_start = query.get('start_date')
+        raw_end = query.get('end_date')
         checkin = get_safe_date(raw_start)
-        cin = datetime.strptime(checkin, "%Y-%m-%d")
-        checkout = (cin + timedelta(days=1)).strftime("%Y-%m-%d")
-
-        print(f"[Hotel] Request: {destination} ({checkin})")
         
-        # 🚀 GOOGLE HOTELS DEEP LINK
-        # Format: https://www.google.com/travel/hotels?q=hotels+in+Madinah
-        google_hotels_link = f"https://www.google.com/travel/hotels?q=hotels+in+{destination.replace(' ', '+')}"
+        # Calculate checkout date based on end_date if provided, otherwise use start + trip duration
+        if raw_end and raw_end.lower() != "none":
+            checkout = get_safe_date(raw_end)
+        else:
+            cin = datetime.strptime(checkin, "%Y-%m-%d")
+            checkout = (cin + timedelta(days=1)).strftime("%Y-%m-%d")
+
+        print(f"[Hotel] Request: {destination} ({checkin} to {checkout})")
+        
+        # 🚀 GOOGLE HOTELS DEEP LINK WITH DATES
+        # Format: https://www.google.com/travel/hotels?q=hotels+in+Tokyo&checkin=2026-01-02&checkout=2026-01-06
+        google_hotels_link = f"https://www.google.com/travel/hotels?q=hotels+in+{destination.replace(' ', '+')}&checkin={checkin}&checkout={checkout}"
         
         # Check Cache
         cache_key = cache._generate_key("hotels", destination, checkin)

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { 
-  Send, Sparkles, MapPin, Calendar, DollarSign, Loader2, AlertCircle, Info, Users 
+  Send, Sparkles, MapPin, Calendar, Loader2, AlertCircle, Info, Users 
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
@@ -47,8 +47,6 @@ export function ChatInterface({ onGenerateItinerary }: ChatInterfaceProps) {
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
-
-  useEffect(() => { scrollToBottom(); }, [messages, isLoading]);
 
   // Fake progress bar animation and stage progression
   useEffect(() => {
@@ -190,7 +188,6 @@ export function ChatInterface({ onGenerateItinerary }: ChatInterfaceProps) {
         content: `I've created your personalized itinerary for ${itineraryData.destination}!`,
         tags: [
           { icon: MapPin, label: 'Destination', value: itineraryData.destination },
-          { icon: DollarSign, label: 'Budget', value: `$${itineraryData.total_estimated_cost || 0}` }, 
           { icon: Calendar, label: 'Duration', value: `${itineraryData.daily_plans.length} Days` },
         ],
       }]);
@@ -245,8 +242,7 @@ export function ChatInterface({ onGenerateItinerary }: ChatInterfaceProps) {
     origin: '',
     start_date: '',
     duration: '',
-    travelers: '',
-    budget_usd: ''
+    travelers: ''
   });
 
   const handleQuickFormSubmit = () => {
@@ -256,7 +252,6 @@ export function ChatInterface({ onGenerateItinerary }: ChatInterfaceProps) {
     if (quickFormData.start_date) parts.push(`on ${quickFormData.start_date}`);
     if (quickFormData.duration) parts.push(`for ${quickFormData.duration} days`);
     if (quickFormData.travelers) parts.push(`for ${quickFormData.travelers} travelers`);
-    if (quickFormData.budget_usd) parts.push(`budget $${quickFormData.budget_usd}`);
     
     const query = `Plan a trip ${parts.join(' ')}`;
     setShowQuickForm(false);
@@ -351,19 +346,6 @@ export function ChatInterface({ onGenerateItinerary }: ChatInterfaceProps) {
                       placeholder="e.g., 1, 2, 4"
                       value={quickFormData.travelers}
                       onChange={(e) => setQuickFormData({...quickFormData, travelers: e.target.value})}
-                      className="input-glass w-full"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-200 mb-2 flex items-center gap-2">
-                      <DollarSign className="h-4 w-4 text-green-400" /> Budget (USD)
-                    </label>
-                    <input
-                      type="number"
-                      placeholder="e.g., 1000, 2500"
-                      value={quickFormData.budget_usd}
-                      onChange={(e) => setQuickFormData({...quickFormData, budget_usd: e.target.value})}
                       className="input-glass w-full"
                     />
                   </div>

@@ -95,17 +95,6 @@ export function ItineraryDashboard({ onNavigate, tripData }: ItineraryDashboardP
                   <Calendar className="h-5 w-5 text-cyan-400" />
                   <span className="text-white font-semibold">{tripData.daily_plans.length} Days</span>
                 </motion.div>
-                {tripData.total_estimated_cost ? (
-                  <motion.div 
-                    className="glass flex items-center gap-2 px-5 py-2.5 rounded-full shadow-lg border-emerald-400/30"
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: 0.4 }}
-                    whileHover={{ scale: 1.05 }}
-                  >
-                    <span className="font-bold text-emerald-400">💰 ${tripData.total_estimated_cost}</span>
-                  </motion.div>
-                ) : null}
               </div>
 
               <div className="flex flex-wrap gap-4">
@@ -240,16 +229,9 @@ export function ItineraryDashboard({ onNavigate, tripData }: ItineraryDashboardP
                 </h3>
               </div>
               <div className="p-6 glass-subtle">
-                <p className="text-sm text-slate-200 whitespace-pre-line mb-6 leading-relaxed">
+                <p className="text-sm text-slate-200 whitespace-pre-line leading-relaxed">
                   {tripData.budget_overview || "Calculated based on average costs."}
                 </p>
-                <div className="h-px bg-gradient-to-r from-transparent via-white/20 to-transparent my-4" />
-                <div className="flex justify-between items-center">
-                  <span className="text-base font-semibold text-slate-300">Total Est.</span>
-                  <span className="text-2xl font-bold text-emerald-400">
-                    ${tripData.total_estimated_cost || 0}
-                  </span>
-                </div>
               </div>
             </motion.div>
 

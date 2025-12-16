@@ -230,6 +230,9 @@ class DailyPlan(BaseModel):
 class FinalItinerary(BaseModel):
     trip_title: str
     destination: str
+    origin: Optional[str] = Field(None, description="Origin city for trip")
+    start_date: Optional[str] = Field(None, description="Trip start date (YYYY-MM-DD)")
+    end_date: Optional[str] = Field(None, description="Trip end date (YYYY-MM-DD)")
     trip_summary: str
     
     # Selected Options

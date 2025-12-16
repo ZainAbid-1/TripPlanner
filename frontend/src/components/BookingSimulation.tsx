@@ -1,9 +1,6 @@
 import { motion } from 'motion/react';
-import { Plane, Hotel, ExternalLink, Star, Info, ArrowLeft, ArrowRight } from 'lucide-react';
+import { Plane, Hotel, ExternalLink, Star, ArrowLeft, ArrowRight } from 'lucide-react';
 import { Button } from './ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { Separator } from './ui/separator';
-import { Alert, AlertDescription } from './ui/alert';
 import { FinalItinerary } from '../types';
 import { useState } from 'react';
 
@@ -43,15 +40,22 @@ export function BookingSimulation({ onNavigate, tripData }: BookingSimulationPro
 
         <div className="mb-10">
           <h1 className="text-5xl font-bold text-white mb-3 text-shadow">Booking Options</h1>
-          <p className="text-xl text-slate-300">Real-time prices for {tripData.destination}</p>
+          <p className="text-xl text-slate-300">
+            {tripData.origin 
+              ? `Here are the cheapest flights from ${tripData.origin} to ${tripData.destination}`
+              : `Real-time prices for ${tripData.destination}`}
+          </p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2 space-y-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="space-y-8">
             
             <div>
               <h2 className="text-3xl font-bold gradient-text mb-6 flex items-center gap-3">
-                <Plane className="h-7 w-7 text-blue-400" /> Outbound Flights
+                <Plane className="h-7 w-7 text-blue-400" /> 
+                {tripData.origin 
+                  ? `${tripData.origin} → ${tripData.destination}`
+                  : 'Outbound Flights'}
               </h2>
               <div className="space-y-5">
                 {outboundFlights.map((flight, index) => {
@@ -138,7 +142,10 @@ export function BookingSimulation({ onNavigate, tripData }: BookingSimulationPro
             {/* RETURN FLIGHTS */}
             <div>
               <h2 className="text-3xl font-bold gradient-text mb-6 flex items-center gap-3">
-                <Plane className="h-7 w-7 text-green-400 rotate-180" /> Return Flights
+                <Plane className="h-7 w-7 text-green-400 rotate-180" /> 
+                {tripData.origin 
+                  ? `${tripData.destination} → ${tripData.origin}`
+                  : 'Return Flights'}
               </h2>
               <div className="space-y-4">
                 {returnFlights.map((flight, index) => {
@@ -226,8 +233,15 @@ export function BookingSimulation({ onNavigate, tripData }: BookingSimulationPro
             {/* HOTELS */}
             <div>
               <h2 className="text-3xl font-bold gradient-text mb-6 flex items-center gap-3">
-                <Hotel className="h-7 w-7 text-purple-400" /> Hotel Options
+                <Hotel className="h-7 w-7 text-purple-400" /> Hotels in {tripData.destination}
               </h2>
+              {tripData.start_date && tripData.end_date && (
+                <p className="text-slate-300 mb-4 -mt-2">
+                  Here are the cheapest hotels currently in {tripData.destination} 
+                  {tripData.start_date && ` from ${new Date(tripData.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`}
+                  {tripData.end_date && ` to ${new Date(tripData.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`}
+                </p>
+              )}
               <div className="space-y-4">
 
                 {hotelList.map((hotel, index) => (
@@ -253,10 +267,9 @@ export function BookingSimulation({ onNavigate, tripData }: BookingSimulationPro
                   <p className="text-xs text-slate-400 mt-1">{hotel.address}</p>
                 </div>
                 <div className="text-right ml-4">
-                  <span className="block text-3xl font-bold gradient-text mb-1">
+                  <span className="block text-3xl font-bold gradient-text mb-3">
                       {hotel.price_per_night_usd > 0 ? `$${hotel.price_per_night_usd}` : "Check"}
                   </span>
-                  <span className="text-sm font-normal text-slate-400">/night</span>
                   <Button
                     size="sm"
                     className="btn-primary px-6 mt-3"
@@ -279,60 +292,6 @@ export function BookingSimulation({ onNavigate, tripData }: BookingSimulationPro
               </div>
             </div>
 
-          </div>
-
-          {/* SUMMARY SIDEBAR */}
-          <div className="lg:col-span-1">
-            <div className="sticky top-24">
-              <Card className="bg-blue-50 border-blue-200">
-                <CardHeader>
-                  <CardTitle className="text-blue-900">Trip Summary</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-blue-800">Outbound Flight</span>
-                    <span className="font-bold">
-                      {(tripData.chosen_outbound_flight?.price_usd || tripData.chosen_flight?.price_usd) 
-                        ? `$${tripData.chosen_outbound_flight?.price_usd || tripData.chosen_flight?.price_usd}` 
-                        : 'N/A'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-blue-800">Return Flight</span>
-                    <span className="font-bold">
-                      {(tripData.chosen_return_flight?.price_usd || tripData.chosen_flight?.price_usd) 
-                        ? `$${tripData.chosen_return_flight?.price_usd || tripData.chosen_flight?.price_usd}` 
-                        : 'N/A'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-blue-800">Hotel Est. (3 nights)</span>
-                    <span className="font-bold">
-                      {tripData.chosen_hotel?.price_per_night_usd 
-                        ? `$${tripData.chosen_hotel.price_per_night_usd * 3}` 
-                        : 'N/A'}
-                    </span>
-                  </div>
-                  <Separator className="bg-blue-200" />
-                  <div className="flex justify-between text-lg font-bold text-blue-900">
-                    <span>Est. Total</span>
-                    <span>
-                      {tripData.total_estimated_cost && tripData.total_estimated_cost > 0
-                        ? `$${tripData.total_estimated_cost}` 
-                        : 'N/A'}
-                    </span>
-                  </div>
-                  <Alert className="bg-white/50 border-blue-200 mt-4">
-                    <Info className="h-4 w-4 text-blue-600" />
-                    <AlertDescription className="text-xs text-blue-800 ml-2">
-                      {tripData.total_estimated_cost && tripData.total_estimated_cost > 0
-                        ? 'Prices change frequently. Click "Book Now" to see live availability.'
-                        : 'No live pricing available from APIs. Please check booking links for current rates.'}
-                    </AlertDescription>
-                  </Alert>
-                </CardContent>
-              </Card>
-            </div>
           </div>
         </div>
       </div>

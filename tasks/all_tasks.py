@@ -203,6 +203,14 @@ def create_curation_task(
             7. Every activity MUST include the actual attraction name in the title (e.g., "Visit Al-Balad Historic District", not "Visit historic area").
             8. If you mention a different city or wrong attractions, the output will be rejected.
             9. If no specific attractions are provided, use "{trip_details.destination} City Tour" as activity titles.
+            10. **DESCRIPTION DETAIL REQUIREMENT**: Each activity description MUST be detailed and engaging (aim for 4+ lines or 150-200 words). Include specific details about what visitors will see, experience, and learn. Describe the atmosphere, cultural significance, recommended activities, and tips for making the most of the visit.
+            11. **ACTIVITIES PER DAY**: Each day MUST have at least 5 activities (spots to visit).
+            12. **NIGHT ACTIVITIES**: At least 2 activities per day MUST be scheduled for evening/night time (after 18:00). These should be appropriate for night visits such as:
+                - Night markets, food streets, or dining experiences
+                - Evening shows, performances, or cultural events
+                - Illuminated landmarks or viewpoints
+                - Waterfront walks or nightlife areas
+                - Sunset viewing spots followed by dinner
             
             **IMPORTANT JSON FORMAT:**
             Your output MUST be a JSON object with this exact structure. 
@@ -213,14 +221,42 @@ def create_curation_task(
                 "days": [
                     {{
                         "day": 1,
-                        "title": "Arrival in {trip_details.destination}",
+                        "title": "Arrival & Exploration in {trip_details.destination}",
                         "activities": [
                             {{
                                 "time": "10:00",
                                 "type": "Sightseeing",
-                                "title": "Visit [Attraction from list above]",
-                                "description": "Explore the location in {trip_details.destination}",
+                                "title": "Visit [First Attraction from list above]",
+                                "description": "Begin your journey with an immersive experience at this remarkable attraction in {trip_details.destination}. Spend time exploring the intricate architecture, learning about its rich cultural and historical significance through guided tours or interactive exhibits. Take in the vibrant atmosphere as you stroll through the surrounding areas, capturing stunning photographs and sampling local flavors from nearby vendors. This activity offers a perfect introduction to the destination's unique character, providing insights into its traditions, heritage, and contemporary lifestyle.",
                                 "estimated_cost_usd": 20
+                            }},
+                            {{
+                                "time": "13:00",
+                                "type": "Dining",
+                                "title": "Lunch at [Second Attraction or Local Restaurant]",
+                                "description": "Experience authentic local cuisine at a popular restaurant near [attraction name]. Savor traditional dishes that reflect the region's culinary heritage, prepared with fresh ingredients and traditional cooking methods. The welcoming ambiance and friendly service make this an ideal spot to relax and refuel before continuing your exploration.",
+                                "estimated_cost_usd": 25
+                            }},
+                            {{
+                                "time": "15:00",
+                                "type": "Sightseeing",
+                                "title": "Explore [Third Attraction from list above]",
+                                "description": "Discover the fascinating history and vibrant culture at this iconic location in {trip_details.destination}. Walk through the picturesque streets, admire the unique architecture, and learn about the stories that shaped this area. Interact with local artisans, browse traditional crafts, and immerse yourself in the authentic atmosphere that makes this destination special.",
+                                "estimated_cost_usd": 15
+                            }},
+                            {{
+                                "time": "18:30",
+                                "type": "Sightseeing",
+                                "title": "Sunset at [Fourth Attraction - Viewpoint/Waterfront]",
+                                "description": "Experience a breathtaking sunset at one of {trip_details.destination}'s most scenic viewpoints. As the sun sets over the horizon, watch the sky transform into a canvas of vibrant colors while the city begins to illuminate. This magical time of day offers spectacular photo opportunities and a peaceful moment to reflect on your day's adventures.",
+                                "estimated_cost_usd": 0
+                            }},
+                            {{
+                                "time": "20:00",
+                                "type": "Dining & Entertainment",
+                                "title": "Evening at [Fifth Attraction - Night Market/Entertainment District]",
+                                "description": "Conclude your first day with an exciting evening exploring the vibrant night scene in {trip_details.destination}. Wander through bustling night markets filled with local vendors, street food stalls, and artisan crafts. Sample delicious evening snacks, enjoy live entertainment, and soak in the lively atmosphere as locals and tourists mingle. This is the perfect opportunity to experience the destination's nightlife culture and create memorable moments under the stars.",
+                                "estimated_cost_usd": 30
                             }}
                         ]
                     }}
@@ -239,7 +275,8 @@ def create_assembly_task(
     agent,
     destination_data: DestinationAnalysis,
     logistics_data: LogisticsAnalysis,
-    daily_plans: list
+    daily_plans: list,
+    trip_details: DeconstructedQuery = None
 ) -> Task:
     """Task for Lead Planner: Assemble final itinerary"""
     
@@ -254,9 +291,20 @@ def create_assembly_task(
     # Get destination name from destination_data for validation
     destination_name = destination_data.key_regions[0] if destination_data.key_regions else "the destination"
     
+    # Extract trip metadata for final itinerary
+    origin = trip_details.origin if trip_details else None
+    start_date = trip_details.start_date if trip_details else None
+    end_date = trip_details.end_date if trip_details else None
+    
     return Task(
         description=dedent(f"""
             **CRITICAL INSTRUCTION**: You are assembling the final itinerary for {destination_name}. DO NOT CHANGE THE DESTINATION. Follow these rules EXACTLY.
+            
+            **TRIP METADATA:**
+            - Origin: {origin or "Not specified"}
+            - Start Date: {start_date or "Not specified"}
+            - End Date: {end_date or "Not specified"}
+            - IMPORTANT: Include these EXACT values in the final itinerary (origin, start_date, end_date fields)
             
             **DESTINATION VALIDATION:**
             - THIS ITINERARY IS FOR: {destination_name}

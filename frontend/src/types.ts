@@ -51,6 +51,9 @@ export interface HotelOption {
 export interface FinalItinerary {
   trip_title: string;
   destination: string;
+  origin?: string;
+  start_date?: string;
+  end_date?: string;
   trip_summary: string;
   chosen_flight: FlightOption;
   chosen_hotel: HotelOption;
