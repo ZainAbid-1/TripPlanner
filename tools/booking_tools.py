@@ -29,7 +29,15 @@ AIRLINE_MAP = {
 
 def get_safe_date(date_str):
     if date_str and date_str.lower() != "none":
-        return date_str
+        try:
+            if len(date_str) == 8 and date_str.count('-') == 2:
+                parts = date_str.split('-')
+                if len(parts[0]) == 2:
+                    date_str = f"20{parts[0]}-{parts[1]}-{parts[2]}"
+            parsed = datetime.strptime(date_str, "%Y-%m-%d")
+            return parsed.strftime("%Y-%m-%d")
+        except:
+            pass
     today = datetime.now()
     days_ahead = (4 - today.weekday() + 7) % 7
     if days_ahead == 0: days_ahead = 7
@@ -192,23 +200,45 @@ class FlightSearchTool(BaseTool):
         destination = query.get('destination')
         raw_date = query.get('start_date')
         raw_end = query.get('end_date')
-        date = get_safe_date(raw_date)
-        end_date = get_safe_date(raw_end)
-        travelers = query.get('travelers', 1)
-
+        
         # Handle "None" string or None/empty origin
         if origin in [None, "None", "", "null"]:
             print(f"[Flight] Warning: No origin specified. Cannot search flights without origin.")
+            if destination and destination not in [None, "None", "", "null"]:
+                dest_iata = amadeus_client.get_iata_code(destination)
+                return {
+                    "error": "Origin not specified", 
+                    "flight_options": [],
+                    "booking_url": f"https://www.google.com/travel/flights?q=flights+to+{dest_iata}",
+                    "source": "Missing Origin"
+                }
+            else:
+                return {
+                    "error": "Origin not specified", 
+                    "flight_options": [],
+                    "booking_url": "https://www.google.com/travel/flights",
+                    "source": "Missing Origin"
+                }
+        
+        if not destination or destination in [None, "None", "", "null"]: 
+            origin_iata = amadeus_client.get_iata_code(origin)
             return {
-                "error": "Origin not specified", 
+                "error": "Missing destination", 
                 "flight_options": [],
-                "booking_url": f"https://www.google.com/travel/flights?q=Flights+to+{destination}",
-                "source": "Missing Origin"
+                "booking_url": f"https://www.google.com/travel/flights?q=flights+from+{origin_iata}",
+                "source": "Missing Destination"
             }
         
+        # Normalize dates to YYYY-MM-DD format
+        date = get_safe_date(raw_date)
+        
+        # Check if round-trip was requested
+        is_round_trip = raw_end and str(raw_end).lower() not in ["none", "", "null"]
+        end_date = get_safe_date(raw_end) if is_round_trip else None
+        
+        travelers = query.get('travelers', 1)
+        
         print(f"[Flight] Request: {origin}->{destination} on {date}")
-        if not destination: 
-            return {"error": "Missing destination", "flight_options": []}
         
         cache_key = cache._generate_key("flights", origin, destination, date, travelers)
         if cache.get(cache_key): return cache.get(cache_key)
@@ -218,23 +248,19 @@ class FlightSearchTool(BaseTool):
         
         print(f"[FLIGHT URL] Origin: {origin} -> IATA: {origin_iata}")
         print(f"[FLIGHT URL] Destination: {destination} -> IATA: {dest_iata}")
-        print(f"[FLIGHT URL] Dates: start={date}, end={end_date}")
+        print(f"[FLIGHT URL] Dates: start={date}, end={end_date if end_date else 'N/A'}")
         
-        # ✅ ACTUAL GOOGLE FLIGHTS URL WITH IATA CODES
-        # Build round-trip URL if end_date is provided and different from start_date
-        if end_date and end_date != date and end_date.lower() not in ["none", ""]:
-            base_link = f"https://www.google.com/travel/flights?q=Flights%20to%20{dest_iata}%20from%20{origin_iata}%20on%20{date}%20return%20{end_date}"
+        # Build Google Flights URL with proper date formatting for pre-fill
+        if is_round_trip and end_date and end_date != date:
+            base_link = f"https://www.google.com/travel/flights?q=flights+from+{origin_iata}+to+{dest_iata}+on+{date}+return+{end_date}"
             print(f"[FLIGHT URL] Round-trip URL generated")
         else:
-            base_link = f"https://www.google.com/travel/flights?q=Flights%20to%20{dest_iata}%20from%20{origin_iata}%20on%20{date}"
+            base_link = f"https://www.google.com/travel/flights?q=flights+from+{origin_iata}+to+{dest_iata}+on+{date}"
             print(f"[FLIGHT URL] One-way URL generated")
         
         print(f"[FLIGHT URL] Generated URL: {base_link}")
 
-        # ✅ SKIP AMADEUS - GO DIRECTLY TO GOOGLE FLIGHTS
-        # Amadeus API is unreliable and often returns no results
-        # Google Flights provides real-time data from all airlines
-        print(f"[FLIGHT] → Directing to Google Flights for live search: {origin} → {destination} ({date} - {end_date if end_date else 'one-way'})")
+        print(f"[FLIGHT] Directing to Google Flights for live search: {origin} -> {destination} ({date} - {end_date if end_date else 'one-way'})")
         result = {
             "flight_options": [], 
             "booking_url": base_link, 
@@ -268,9 +294,7 @@ class FlightSearchTool(BaseTool):
                 carrier_code = segments[0].get("carrierCode", "Unknown")
                 airline_name = AIRLINE_MAP.get(carrier_code, f"{carrier_code} Airlines")
                 
-                # ✅ ACTUAL GOOGLE FLIGHTS URL WITH PROPER PARAMETERS
-                # Format: https://www.google.com/travel/flights?q=Flights+to+JED+from+LHE+on+2025-12-20
-                specific_url = f"https://www.google.com/travel/flights?q=Flights+to+{dest_iata}+from+{origin_iata}+on+{date}+{airline_name.replace(' ', '+')}"
+                specific_url = f"https://www.google.com/travel/flights?q=flights+from+{origin_iata}+to+{dest_iata}+on+{date}+{airline_name.replace(' ', '+')}"
                 
                 # Calculate duration
                 try:
@@ -353,9 +377,7 @@ class FlightSearchTool(BaseTool):
                 dep_time = segments1[0].get("departure", {}).get("at", "").split("T")[1][:5] if segments1[0].get("departure", {}).get("at") else "N/A"
                 arr_time = segments2[-1].get("arrival", {}).get("at", "").split("T")[1][:5] if segments2[-1].get("arrival", {}).get("at") else "N/A"
                 
-                # ✅ ENHANCED GOOGLE FLIGHTS URL FOR MULTI-CITY SEARCH
-                # Format: /travel/flights?q=Flights+from+LAX+to+DXB+to+DEL+on+2025-12-12
-                specific_url = f"https://www.google.com/travel/flights?q=Flights+from+{origin_iata}+to+{hub}+to+{dest_iata}+on+{date}"
+                specific_url = f"https://www.google.com/travel/flights?q=flights+from+{origin_iata}+to+{hub}+to+{dest_iata}+on+{date}"
                 
                 # Build detailed airline display
                 airline_display = f"{airline1}"

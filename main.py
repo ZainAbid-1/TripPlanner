@@ -41,6 +41,82 @@ from utils.budget_analyzer import BudgetAnalyzer
 
 load_dotenv()
 
+# Average hotel costs per night by region/country (in USD)
+AVERAGE_ACCOMMODATION_COSTS = {
+    # Middle East
+    "saudi arabia": 80, "riyadh": 90, "jeddah": 85, "mecca": 100, "medina": 95, "makkah": 100, "madinah": 95,
+    "united arab emirates": 120, "dubai": 150, "abu dhabi": 130, "uae": 120,
+    "qatar": 110, "doha": 110,
+    "kuwait": 90,
+    "bahrain": 85,
+    "oman": 75,
+    "jordan": 65, "amman": 70,
+    "turkey": 60, "istanbul": 75, "ankara": 55,
+    
+    # South Asia
+    "pakistan": 50, "lahore": 55, "karachi": 60, "islamabad": 65, "multan": 45, "sialkot": 40,
+    "india": 45, "delhi": 60, "mumbai": 70, "bangalore": 65, "new delhi": 60,
+    "bangladesh": 40, "dhaka": 45,
+    "sri lanka": 50, "colombo": 55,
+    "nepal": 35, "kathmandu": 40,
+    
+    # Southeast Asia
+    "thailand": 40, "bangkok": 50, "phuket": 60,
+    "malaysia": 45, "kuala lumpur": 55,
+    "singapore": 120,
+    "indonesia": 35, "bali": 50, "jakarta": 45,
+    "vietnam": 35, "hanoi": 40, "ho chi minh": 40,
+    "philippines": 40, "manila": 45,
+    
+    # Europe
+    "united kingdom": 120, "london": 150, "uk": 120,
+    "france": 100, "paris": 130,
+    "germany": 90, "berlin": 100, "munich": 95,
+    "spain": 80, "barcelona": 95, "madrid": 90,
+    "italy": 85, "rome": 100, "milan": 95,
+    "netherlands": 110, "amsterdam": 120,
+    "greece": 70, "athens": 80,
+    "portugal": 70, "lisbon": 80,
+    
+    # North America
+    "united states": 120, "new york": 180, "los angeles": 150, "usa": 120,
+    "canada": 100, "toronto": 110, "vancouver": 115,
+    "mexico": 60, "cancun": 80,
+    
+    # East Asia
+    "china": 70, "beijing": 85, "shanghai": 90,
+    "japan": 100, "tokyo": 120, "osaka": 100,
+    "south korea": 80, "seoul": 95,
+    
+    # Africa
+    "egypt": 50, "cairo": 60,
+    "south africa": 65, "cape town": 75,
+    "morocco": 55, "marrakech": 65,
+    "kenya": 60, "nairobi": 70,
+    
+    # Oceania
+    "australia": 110, "sydney": 130, "melbourne": 120,
+    "new zealand": 95, "auckland": 105,
+}
+
+def estimate_accommodation_cost(destination: str, fallback: int = 75) -> int:
+    """Estimate average accommodation cost per night based on destination"""
+    if not destination:
+        return fallback
+    
+    destination_lower = destination.lower().strip()
+    
+    # Direct match
+    if destination_lower in AVERAGE_ACCOMMODATION_COSTS:
+        return AVERAGE_ACCOMMODATION_COSTS[destination_lower]
+    
+    # Partial match (e.g., "New York, USA" matches "new york")
+    for location, cost in AVERAGE_ACCOMMODATION_COSTS.items():
+        if location in destination_lower or destination_lower in location:
+            return cost
+    
+    return fallback
+
 os.environ["CREWAI_TELEMETRY_OPT_OUT"] = "true"
 os.environ["CREWAI_REQUEST_TIMEOUT"] = "300" 
 
@@ -608,7 +684,16 @@ class OptimizedTripPlannerCrew:
             flight_cost = estimated_flight_cost
             hotel_per_night = itinerary.chosen_hotel.price_per_night_usd if itinerary.chosen_hotel else 0
             trip_duration = len(daily_plans)
-            hotel_total = hotel_per_night * trip_duration
+            
+            # If no hotel selected or price is 0, estimate based on destination
+            if hotel_per_night == 0:
+                destination = trip_details.destination if hasattr(trip_details, 'destination') else ""
+                hotel_per_night = estimate_accommodation_cost(destination)
+                hotel_total = hotel_per_night * trip_duration
+                hotel_estimated = True
+            else:
+                hotel_total = hotel_per_night * trip_duration
+                hotel_estimated = False
             
             # Calculate activities cost from daily plans
             activities_cost = 0
@@ -637,12 +722,20 @@ class OptimizedTripPlannerCrew:
                 budget_message = BudgetAnalyzer.get_budget_message_for_itinerary(budget_analysis)
                 recommendations_text = "\n".join(budget_analysis["recommendations"][:3])
                 
-                itinerary.budget_overview = f"{budget_message}\n\n**Budget Breakdown:**\n" \
-                                           f"- Flights: ${flight_cost:,.0f}\n" \
-                                           f"- Accommodation: ${hotel_total:,.0f}\n" \
-                                           f"- Activities: ${activities_cost:,.0f}\n" \
-                                           f"- Daily Expenses Budget: ${budget_analysis['daily_remaining']:,.0f}/day\n\n" \
-                                           f"**Recommendations:**\n{recommendations_text}"
+                # Format accommodation line
+                accom_line = f"- **Accommodation**: ${hotel_total:,.0f}"
+                if hotel_estimated:
+                    accom_line += f" (avg. ${hotel_per_night:,.0f}/night for {trip_duration} nights)"
+                else:
+                    accom_line += f" (${hotel_per_night:,.0f}/night × {trip_duration} nights)"
+                
+                itinerary.budget_overview = f"{budget_message}\n\n" \
+                                           f"**💰 Budget Breakdown:**\n\n" \
+                                           f"- **✈️ Flights**: ${flight_cost:,.0f}\n" \
+                                           f"{accom_line}\n" \
+                                           f"- **🎯 Activities**: ${activities_cost:,.0f}\n" \
+                                           f"- **🍽️ Daily Expenses Budget**: ${budget_analysis['daily_remaining']:,.0f}/day\n\n" \
+                                           f"**📋 Recommendations:**\n{recommendations_text}"
                 
                 print(f"💰 Budget Analysis: {budget_analysis['tier_label']} ({budget_analysis['utilization_percent']}% utilization)")
             else:
@@ -651,13 +744,18 @@ class OptimizedTripPlannerCrew:
                 total_daily_expenses = estimated_daily_expenses * trip_duration
                 total_estimated = flight_cost + hotel_total + activities_cost + total_daily_expenses
                 
-                itinerary.budget_overview = f"**Estimated Cost Breakdown for {trip_duration}-Day Trip:**\n\n" \
-                                           f"- **Flights**: ${flight_cost:,.0f}\n" \
-                                           f"- **Accommodation**: ${hotel_total:,.0f}\n" \
-                                           f"- **Activities**: ${activities_cost:,.0f}\n" \
-                                           f"- **Daily Expenses** (food, transport, misc): ${estimated_daily_expenses:,.0f}/day × {trip_duration} days = ${total_daily_expenses:,.0f}\n\n" \
-                                           f"**Total Estimated Cost**: ${total_estimated:,.0f}\n\n" \
-                                           f"💡 This is an estimated cost to help you plan your budget. Actual costs may vary based on your preferences and travel style."
+                # Format accommodation line
+                accom_line = f"- **🏨 Accommodation**: ${hotel_total:,.0f}"
+                if hotel_estimated:
+                    accom_line += f" (avg. ${hotel_per_night:,.0f}/night × {trip_duration} nights)"
+                
+                itinerary.budget_overview = f"**💰 Estimated Cost Breakdown for {trip_duration}-Day Trip:**\n\n" \
+                                           f"- **✈️ Flights**: ${flight_cost:,.0f}\n" \
+                                           f"{accom_line}\n" \
+                                           f"- **🎯 Activities**: ${activities_cost:,.0f}\n" \
+                                           f"- **🍽️ Daily Expenses** (food, transport, misc): ${estimated_daily_expenses:,.0f}/day × {trip_duration} days = ${total_daily_expenses:,.0f}\n\n" \
+                                           f"**💵 Total Estimated Cost**: ${total_estimated:,.0f}\n\n" \
+                                           f"💡 *This is an estimated cost to help you plan your budget. Actual costs may vary based on your preferences and travel style.*"
                 
                 print(f"💰 Estimated Total Cost: ${total_estimated:,.0f} (no user budget provided)")
                 total_estimated = int(total_estimated)
